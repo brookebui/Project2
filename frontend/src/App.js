@@ -4,6 +4,7 @@ import 'bootstrap/dist/css/bootstrap.min.css';
 import ClientDashboard from './components/ClientDashboard';
 import Login from './components/Login';
 import David from './components/DavidDashboard';
+import Registration from './components/Registration';
 
 function App() {
   return (
@@ -12,6 +13,7 @@ function App() {
       <Route path="/" element={<Login/>} />
         <Route path="/client" element={<ClientDashboard/>} />
         {/* <Route path="/david" element={<DavidDashboard/>} /> */}
+        <Route path="/Registration" element={<Registration/>} />
       </Routes>
     </Router>
   );
