@@ -5,7 +5,7 @@ import axios from 'axios'
 
 function Login(){
     const [values, setValues] = useState({
-        username: '',
+        email: '',
         password: ''
     })
     const navigate = useNavigate();
@@ -19,18 +19,18 @@ function Login(){
         event.preventDefault();
         const err = Validation(values);
         setErrors(err);
-        if(err.username === "" && err.password === "") {
+        if(err.email === "" && err.password === "") {
             axios.post('http://localhost:5050/login', values)
             .then(response => {
                 if(response.data.success){
                     navigate('/ClientDashboard')
                 } else{
-                    alert("Invalid username or password")
+                    alert("Invalid email or password")
                 }
             })
             .catch(err => {
                 console.log(err);
-                alert("Invalid username or password")
+                alert("Invalid email or password")
             })
         }
     }
