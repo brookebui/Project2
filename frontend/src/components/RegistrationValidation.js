@@ -2,10 +2,10 @@ function Validation(values){
     let error = {}
     const pass_pattern = /^(?=.*\d)(?=.*[a-z])(?=.*[A-Z])[a-zA-Z0-9]{8,}$/
 
-    if(values.username === ""){
-        error.username = "Username is required"
+    if(values.email === ""){
+        error.email = "Email is required"
     } else{
-        error.username = ""
+        error.email = ""
     }
 
     if(values.firstname === ""){
@@ -20,16 +20,22 @@ function Validation(values){
         error.lastname = ""
     }
 
-    if(values.salary === ""){
-        error.salary = "Salary is required"
+    if(values.address === ""){
+        error.address = "Address is required"
     } else{
-        error.salary = ""
+        error.address = ""
     }
 
-    if(values.age === ""){
-        error.age = "Age is required"
+    if(values.creditCard === ""){
+        error.creditCard = "Credit card is required"
     } else{
-        error.age = ""
+        error.phoneNumber = ""
+    }
+
+    if(values.phoneNumber === ""){
+        error.phoneNumber = "Phone number is required"
+    } else{
+        error.phoneNumber = ""
     }
 
     if(values.password === ""){

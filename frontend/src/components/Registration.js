@@ -29,7 +29,7 @@ function Registration(){
             axios.post('http://localhost:5050/signup', values)
             .then(response => {
                 if(response.data.success) {
-                    navigate('/')
+                    navigate('/Home')
                 } else {
                     alert("Error creating account");
                 }
@@ -76,10 +76,21 @@ function Registration(){
                         <input type ="creditCard" placeholder="Enter credit card" name = 'creditCard' onChange={handleInput}className='form-control rounded-0'/>
                         {errors.creditCard && <span className = 'text-danger'> {errors.creditCard}</span>}
                     </div>
+                    <div className='mb-3'>
+                        <label htmlFor="password"><strong>Password</strong></label>
+                        <input type ="password" placeholder="Enter password" name = 'password' onChange={handleInput}className='form-control rounded-0'/>
+                        {errors.password && <span className = 'text-danger'> {errors.password}</span>}
+                    </div>
                     <button type='submit' className='btn btn-success w-100 rounded-0'>Sign up</button>
                     <p></p>
-                    <Link to="/home" className='btn btn-light border w-100 rounded-0'>Login</Link>
+                    <button 
+                        type='button' 
+                        className='btn btn-light border w-100 rounded-0' 
+                        onClick={() => navigate('/')}>
+                        Login
+                    </button>
                 </form>
+    
             </div>
         </div>
     )
