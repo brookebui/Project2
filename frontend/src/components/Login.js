@@ -28,15 +28,15 @@ function Login() {
             axios.post('http://localhost:5050/login', values)
             .then(response => {
                 if (response.data.success) {
-                    const { clientID, user } = response.data;
+                    const { client_id, user } = response.data;
 
-                    console.log("Client ID before storing in localStorage:", clientID);  // Debug log
+                    console.log("Client ID before storing in localStorage:", client_id);  // Debug log
 
                     // Store clientID in localStorage
-                    localStorage.setItem('clientId', clientID);
+                    localStorage.setItem('client_id', client_id);
 
                     // Optionally, store user data if needed
-                    localStorage.setItem('userName', user.first_name);  // Example: storing first name
+                    localStorage.setItem('username', user.first_name);  // Example: storing first name
 
                     // Navigate to the client dashboard
                     navigate('/ClientDashboard');

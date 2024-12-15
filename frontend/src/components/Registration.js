@@ -5,12 +5,12 @@ import axios from 'axios';
 
 function Registration() {
     const [values, setValues] = useState({
-        firstname: '',
-        lastname: '',
+        first_name: '',
+        last_name: '',
         address: '',
-        phoneNumber: '',
+        phone_number: '',
         email: '',
-        creditCard: '',
+        credit_card: '',
         password: '',
     });
     const navigate = useNavigate();
@@ -53,14 +53,14 @@ function Registration() {
                         {errors.email && <span className='text-danger'> {errors.email}</span>}
                     </div>
                     <div className='mb-3'>
-                        <label htmlFor="firstname"><strong>First Name</strong></label>
-                        <input type="text" placeholder="Enter first name" name='firstname' onChange={handleInput} className='form-control rounded-0' />
-                        {errors.firstname && <span className='text-danger'> {errors.firstname}</span>}
+                        <label htmlFor="first_name"><strong>First Name</strong></label>
+                        <input type="text" placeholder="Enter first name" name='first_name' onChange={handleInput} className='form-control rounded-0' />
+                        {errors.first_name && <span className='text-danger'> {errors.first_name}</span>}
                     </div>
                     <div className='mb-3'>
-                        <label htmlFor="lastname"><strong>Last Name</strong></label>
-                        <input type="text" placeholder="Enter last name" name='lastname' onChange={handleInput} className='form-control rounded-0' />
-                        {errors.lastname && <span className='text-danger'> {errors.lastname}</span>}
+                        <label htmlFor="last_name"><strong>Last Name</strong></label>
+                        <input type="text" placeholder="Enter last name" name='last_name' onChange={handleInput} className='form-control rounded-0' />
+                        {errors.last_name && <span className='text-danger'> {errors.last_name}</span>}
                     </div>
                     <div className='mb-3'>
                         <label htmlFor="address"><strong>Address</strong></label>
@@ -68,14 +68,14 @@ function Registration() {
                         {errors.address && <span className='text-danger'> {errors.address}</span>}
                     </div>
                     <div className='mb-3'>
-                        <label htmlFor="phoneNumber"><strong>Phone Number</strong></label>
-                        <input type="text" placeholder="Enter phone number" name='phoneNumber' onChange={handleInput} className='form-control rounded-0' />
-                        {errors.phoneNumber && <span className='text-danger'> {errors.phoneNumber}</span>}
+                        <label htmlFor="phone_number"><strong>Phone Number</strong></label>
+                        <input type="text" placeholder="Enter phone number" name='phone_number' onChange={handleInput} className='form-control rounded-0' />
+                        {errors.phone_number && <span className='text-danger'> {errors.phone_number}</span>}
                     </div>
                     <div className='mb-3'>
-                        <label htmlFor="creditCard"><strong>Credit Card</strong></label>
-                        <input type="text" placeholder="Enter credit card" name='creditCard' onChange={handleInput} className='form-control rounded-0' />
-                        {errors.creditCard && <span className='text-danger'> {errors.creditCard}</span>}
+                        <label htmlFor="credit_card"><strong>Credit Card</strong></label>
+                        <input type="text" placeholder="Enter credit card" name='credit_card' onChange={handleInput} className='form-control rounded-0' />
+                        {errors.credit_card && <span className='text-danger'> {errors.credit_card}</span>}
                     </div>
                     <div className='mb-3'>
                         <label htmlFor="password"><strong>Password</strong></label>
