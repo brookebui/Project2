@@ -11,6 +11,7 @@ function ClientDashboard() {
     photos: []
   });
   const [quotes, setQuotes] = useState([]);
+  const [bills, setBills] = useState([]);
   const [orders, setOrders] = useState([]);
   const [selectedQuote, setSelectedQuote] = useState(null);
   const [negotiationForm, setNegotiationForm] = useState({
@@ -38,12 +39,20 @@ function ClientDashboard() {
     }
   };
 
-  // Fetch quotes from the API
+  const fetchBills = async () => {
+    try {
+      const response = await axios.get('http://localhost:5050/api/bills');
+      setBills(response.data);
+    } catch (error) {
+      console.error('Error fetching bills:', error);
+    }
+  };
+
   useEffect(() => {
     fetchQuotes();
+    fetchBills();
   }, []);
 
-  // Handle input changes
   const handleChange = (e) => {
     const { name, value } = e.target;
     setQuoteRequest(prev => ({
@@ -52,9 +61,7 @@ function ClientDashboard() {
     }));
   };
 
-  // Handle photo upload
   const handlePhotoUpload = (e) => {
-
     const files = Array.from(e.target.files).slice(0, 5);
     setQuoteRequest(prev => ({
       ...prev,
@@ -62,11 +69,9 @@ function ClientDashboard() {
     }));
   };
 
-  // Submit quote request
   const submitQuoteRequest = async (e) => {
     e.preventDefault();
 
-    // Get clientID from localStorage
     const client_id = localStorage.getItem('client_id');
     
     if (!client_id) {
@@ -76,7 +81,7 @@ function ClientDashboard() {
 
     const formData = new FormData();
     
-    formData.append('client_id', client_id);  // Add clientID from localStorage
+    formData.append('client_id', client_id);
     formData.append('property_address', quoteRequest.property_address);
     formData.append('square_feet', quoteRequest.square_feet);
     formData.append('proposed_price', quoteRequest.proposed_price);
@@ -206,6 +211,43 @@ function ClientDashboard() {
       alert('Error closing quote: ' + (error.response?.data?.error || error.message));
     }
   };
+
+  const [isPaying, setIsPaying] = useState(false);
+  const handlePay = (billId) => {
+    const isConfirmed = window.confirm("Are you sure you want to pay this bill?");
+    
+    if (isConfirmed) {
+      setIsPaying(true); 
+      axios
+        .delete(`http://localhost:5050/api/bills/${billId}`)
+        .then((response) => {
+          console.log(response.data);
+          setBills((prevBills) => prevBills.filter((bill) => bill.bill_id !== billId));
+          alert("Bill deleted successfully.");
+        })
+        .catch((error) => {
+          console.error("Error deleting bill:", error);
+          if (error.response) {
+            alert(`Error: ${error.response.data.message}`);
+          } else if (error.request) {
+
+            alert("Network error. Please check your connection.");
+          } else {
+
+            alert("There was an issue removing the bill. Please try again.");
+          }
+        })
+        .finally(() => {
+          setIsPaying(false); 
+        });
+    }
+  };
+
+// Handle Dispute Action
+const handleDispute = (billId) => {
+  console.log(`Disputing bill ID: ${billId}`);
+  // Implement logic for submitting a dispute (e.g., open a form for submitting a dispute note)
+};
 
   const renderQuoteRequestForm = () => (
     <div className="container mt-4">
@@ -341,95 +383,6 @@ function ClientDashboard() {
     </table>
   );
 
-  const renderNegotiationModal = () => (
-    selectedQuote && (
-      <div className="modal show d-block" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
-        <div className="modal-dialog">
-          <div className="modal-content">
-            <div className="modal-header">
-              <h5 className="modal-title">Negotiate Quote #{selectedQuote.quote_id}</h5>
-              <button
-                type="button"
-                className="btn-close"
-                onClick={() => setSelectedQuote(null)}
-              />
-            </div>
-            <div className="modal-body">
-              <form onSubmit={handleNegotiationSubmit}>
-                <div className="mb-3">
-                  <label className="form-label">Proposed Price ($)</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    className="form-control"
-                    value={negotiationForm.proposed_price}
-                    onChange={(e) => setNegotiationForm(prev => ({
-                      ...prev,
-                      proposed_price: e.target.value
-                    }))}
-                    required
-                  />
-                </div>
-                <div className="mb-3">
-                  <label className="form-label">Preferred Start Date/Time</label>
-                  <input
-                    type="datetime-local"
-                    className="form-control"
-                    value={negotiationForm.preferred_start}
-                    onChange={(e) => setNegotiationForm(prev => ({
-                      ...prev,
-                      preferred_start: e.target.value
-                    }))}
-                    required
-                  />
-                </div>
-                <div className="mb-3">
-                  <label className="form-label">Preferred End Date/Time</label>
-                  <input
-                    type="datetime-local"
-                    className="form-control"
-                    value={negotiationForm.preferred_end}
-                    onChange={(e) => setNegotiationForm(prev => ({
-                      ...prev,
-                      preferred_end: e.target.value
-                    }))}
-                    required
-                  />
-                </div>
-                <div className="mb-3">
-                  <label className="form-label">Note</label>
-                  <textarea
-                    className="form-control"
-                    rows="3"
-                    value={negotiationForm.note}
-                    onChange={(e) => setNegotiationForm(prev => ({
-                      ...prev,
-                      note: e.target.value
-                    }))}
-                    placeholder="Explain your proposed changes..."
-                    required
-                  />
-                </div>
-                <div className="modal-footer">
-                  <button
-                    type="button"
-                    className="btn btn-secondary"
-                    onClick={() => setSelectedQuote(null)}
-                  >
-                    Cancel
-                  </button>
-                  <button type="submit" className="btn btn-primary">
-                    Submit Negotiation
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        </div>
-      </div>
-    )
-  );
-
   return (
     <div className="container mt-4">
       <h2>Client Dashboard</h2>
@@ -475,8 +428,6 @@ function ClientDashboard() {
           {/* Add orders table here */}
         </div>
       )}
-
-      {renderNegotiationModal()}
     </div>
   );
 }
