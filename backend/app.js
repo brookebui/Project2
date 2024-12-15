@@ -137,120 +137,73 @@ const upload = multer({
 app.post('/quotes/request', upload.array('photos', 5), (req, res) => {
     const { property_address, square_feet, proposed_price, note, client_id } = req.body;
 
-    const photoPaths = req.files ? req.files.map(file => file.filename) : [];
+    // Check for duplicate requests in the last minute
+    const checkDuplicateSQL = `
+        SELECT COUNT(*) as count 
+        FROM Requests 
+        WHERE client_id = ? 
+        AND property_address = ? 
+        AND square_feet = ? 
+        AND proposed_price = ? 
+        AND created_at > DATE_SUB(NOW(), INTERVAL 1 MINUTE)
+    `;
 
-    if (!property_address || !square_feet || !proposed_price) {
-        // Remove uploaded files if validation fails
-        photoPaths.forEach(photo => {
-            const filePath = path.join(__dirname, 'uploads', photo);
-            fs.unlink(filePath, (err) => {
-                if (err) console.error('Error removing file:', err);
-            });
-        });
+    db.query(checkDuplicateSQL, [client_id, property_address, square_feet, proposed_price], (err, result) => {
+        if (err) {
+            console.error('Error checking for duplicates:', err);
+            return res.status(500).json({ error: 'Error checking for duplicates' });
+        }
 
-        return res.status(400).json({
-            success: false,
-            error: 'Missing required fields: property_address, square_feet, or proposed_price',
-        });
-    }
+        if (result[0].count > 0) {
+            return res.status(400).json({ error: 'Duplicate request detected' });
+        }
 
+        // Continue with the insert if no duplicate found
+        const sql = `
+            INSERT INTO Requests (
+                client_id,
+                property_address,
+                square_feet,
+                proposed_price,
+                note,
+                status,
+                created_at
+            ) VALUES (?, ?, ?, ?, ?, 'pending', NOW())
+        `;
 
-    if (isNaN(proposed_price)) {
-        // Remove uploaded files if proposed price is invalid
-        photoPaths.forEach(photo => {
-            const filePath = path.join(__dirname, 'uploads', photo);
-            fs.unlink(filePath, (err) => {
-                if (err) console.error('Error removing file:', err);
-            });
-        });
-
-        return res.status(400).json({
-            success: false,
-            error: 'Invalid proposed_price value',
-        });
-    }
-
-
-    const sql = `
-        INSERT INTO Requests (
+        const values = [
             client_id,
             property_address,
             square_feet,
-            proposed_price,
-            note,
-            status,
-            created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, NOW())
-    `;
+            parseFloat(proposed_price),
+            note
+        ];
 
-    const values = [
-        client_id,
-        property_address,
-        square_feet,
-        parseFloat(proposed_price),
-        note,
-        'pending',
-    ];
-
-    db.query(sql, values, (err, result) => {
-        if (err) {
-            console.error('Error inserting quote request:', err);
-
-            photoPaths.forEach(photo => {
-                const filePath = path.join(__dirname, 'uploads', photo);
-                fs.unlink(filePath, (err) => {
-                    if (err) console.error('Error removing file:', err);
+        db.query(sql, values, (err, result) => {
+            if (err) {
+                console.error('Error inserting quote request:', err);
+                return res.status(500).json({
+                    success: false,
+                    error: 'Failed to submit quote request',
+                    details: err.message
                 });
-            });
+            }
 
-            return res.status(500).json({
-                success: false,
-                error: 'Failed to submit quote request',
-                details: err.message,  
+            res.status(201).json({
+                success: true,
+                message: 'Quote request submitted successfully',
+                request_id: result.insertId
             });
-        }
-
-        res.status(201).json({
-            success: true,
-            message: 'Quote request submitted successfully',
-            quoteId: result.insertId,
-            photos: photoPaths 
         });
     });
 });
 
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
-app.get('/requests', async (req, res) => {
-    try {
-        const result = await db.query('SELECT * FROM Requests ORDER BY created_at DESC');
-        console.log('Query result:', result); 
-        
-        const rows = result[0]; 
-
-        if (!rows || rows.length === 0) {
-            console.log('No requests found.');
-            return res.json({ success: true, requests: [] });
-        }
-
-        res.json({ success: true, requests: rows });
-    } catch (err) {
-        console.error('Error fetching requests:', err.message, err.stack);
-
-        res.status(500).json({
-            success: false,
-            message: 'Failed to retrieve requests',
-            details: err.message
-        });
-    }
-});
-
-  
-// Requests endpoint
 app.get('/api/requests', (req, res) => {
   console.log('Fetching requests...');
   const sql = `
-    SELECT 
+    SELECT DISTINCT
       r.request_id,
       r.client_id,
       r.property_address,
@@ -261,55 +214,48 @@ app.get('/api/requests', (req, res) => {
       r.created_at,
       c.first_name,
       c.last_name
-    FROM requests r
-    LEFT JOIN clients c ON r.client_id = c.client_id
+    FROM Requests r
+    LEFT JOIN Clients c ON r.client_id = c.client_id
     ORDER BY r.created_at DESC
   `;
+  
   console.log('Executing SQL:', sql);
   
   db.query(sql, (err, data) => {
     if (err) {
       console.error('Error fetching requests:', err);
-      return res.status(500).json({ error: 'Error fetching requests' });
+      return res.status(500).json({ error: 'Error fetching requests', details: err.message });
     }
-    console.log('Raw request data:', data);
-    
-    // Get photos in a separate query
-    const getPhotos = async (requestId) => {
-      return new Promise((resolve, reject) => {
-        const photoSql = `
-          SELECT photo_path 
-          FROM request_photos 
-          WHERE request_id = ?
-        `;
-        db.query(photoSql, [requestId], (err, photoData) => {
-          if (err) {
-            console.error('Error fetching photos:', err);
-            resolve([]);
-          } else {
-            resolve(photoData.map(p => p.photo_path));
-          }
-        });
-      });
-    };
 
-    // Format the data to ensure status is correct and handle nulls
-    Promise.all(data.map(async request => {
-      const photos = await getPhotos(request.request_id);
-      return {
-        ...request,
-        first_name: request.first_name || 'Unknown',
-        last_name: request.last_name || 'Client',
-        status: request.status?.toLowerCase() || 'pending',
-        photos: photos
-      };
-    })).then(formattedData => {
-      console.log('Formatted request data:', formattedData);
-      res.json(formattedData);
-    }).catch(error => {
-      console.error('Error formatting data:', error);
-      res.status(500).json({ error: 'Error processing requests' });
-    });
+    console.log('Number of raw requests:', data.length);
+
+    // Format the data and handle nulls
+    const formattedData = data.map(request => ({
+      request_id: request.request_id,
+      client_id: request.client_id,
+      property_address: request.property_address || '',
+      square_feet: request.square_feet || 0,
+      proposed_price: request.proposed_price || 0,
+      note: request.note || '',
+      status: request.status || 'pending',
+      created_at: request.created_at || new Date(),
+      first_name: request.first_name || 'Unknown',
+      last_name: request.last_name || 'Client'
+    }));
+
+    // Remove any duplicates based on all fields
+    const uniqueRequests = formattedData.filter((request, index, self) =>
+      index === self.findIndex((r) => (
+        r.client_id === request.client_id &&
+        r.property_address === request.property_address &&
+        r.square_feet === request.square_feet &&
+        r.proposed_price === request.proposed_price &&
+        r.created_at.getTime() === request.created_at.getTime()
+      ))
+    );
+
+    console.log('Number of unique requests:', uniqueRequests.length);
+    res.json(uniqueRequests);
   });
 });
 
@@ -393,7 +339,7 @@ app.get('/api/orders', (req, res) => {
   });
 });
 
-// Quotes endpoint
+// Group all quote-related endpoints together
 app.get('/api/quotes', (req, res) => {
   console.log('Fetching quotes...');
   db.ping((err) => {
@@ -453,6 +399,165 @@ app.get('/api/quotes', (req, res) => {
     console.log('Formatted quotes data:', formattedData);
     console.log('Number of formatted quotes:', formattedData.length);
     res.json(formattedData);
+  });
+});
+
+// Add the accept quote endpoint right after the GET endpoint
+app.post('/api/quotes/:id/accept', async (req, res) => {
+  const { id } = req.params;
+  const { final_price, work_start, work_end } = req.body;
+  
+  console.log('Quote acceptance request:', { id, final_price, work_start, work_end });
+
+  try {
+    // First check if the quote exists
+    const [quote] = await new Promise((resolve, reject) => {
+      db.query('SELECT * FROM quotes WHERE quote_id = ?', [id], (err, results) => {
+        if (err) {
+          console.error('Error checking quote:', err);
+          reject(err);
+        } else {
+          console.log('Quote check results:', results);
+          resolve(results);
+        }
+      });
+    });
+
+    if (!quote) {
+      console.log('Quote not found:', id);
+      return res.status(404).json({ 
+        success: false, 
+        error: 'Quote not found' 
+      });
+    }
+
+    // Start transaction
+    await new Promise((resolve, reject) => {
+      db.beginTransaction(err => {
+        if (err) {
+          console.error('Transaction start error:', err);
+          reject(err);
+        } else {
+          resolve();
+        }
+      });
+    });
+
+    try {
+      // 1. Update quote status
+      await new Promise((resolve, reject) => {
+        const updateQuoteSQL = 'UPDATE quotes SET status = "accepted" WHERE quote_id = ?';
+        db.query(updateQuoteSQL, [id], (err) => {
+          if (err) {
+            console.error('Quote update error:', err);
+            reject(err);
+          } else {
+            resolve();
+          }
+        });
+      });
+
+      // 2. Create order
+      const orderResult = await new Promise((resolve, reject) => {
+        const createOrderSQL = `
+          INSERT INTO orders (
+            quote_id,
+            work_start,
+            work_end,
+            final_price,
+            status
+          ) VALUES (?, ?, ?, ?, "pending")
+        `;
+        
+        const values = [id, work_start, work_end, final_price];
+        console.log('Creating order with values:', values);
+        
+        db.query(createOrderSQL, values, (err, result) => {
+          if (err) {
+            console.error('Order creation error:', err);
+            reject(err);
+          } else {
+            resolve(result);
+          }
+        });
+      });
+
+      // 3. Create bill
+      await new Promise((resolve, reject) => {
+        const createBillSQL = `
+          INSERT INTO bills (
+            order_id,
+            amount_due,
+            status
+          ) VALUES (?, ?, "pending")
+        `;
+        
+        db.query(createBillSQL, [orderResult.insertId, final_price], (err) => {
+          if (err) {
+            console.error('Bill creation error:', err);
+            reject(err);
+          } else {
+            resolve();
+          }
+        });
+      });
+
+      // Commit transaction
+      await new Promise((resolve, reject) => {
+        db.commit(err => {
+          if (err) {
+            console.error('Commit error:', err);
+            reject(err);
+          } else {
+            resolve();
+          }
+        });
+      });
+
+      console.log('Quote accepted successfully, order created with ID:', orderResult.insertId);
+
+      res.json({
+        success: true,
+        message: 'Quote accepted and order created successfully',
+        order_id: orderResult.insertId
+      });
+
+    } catch (error) {
+      console.error('Transaction error:', error);
+      await new Promise(resolve => db.rollback(() => resolve()));
+      throw error;
+    }
+
+  } catch (error) {
+    console.error('Error in quote acceptance:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to process quote acceptance',
+      details: error.message
+    });
+  }
+});
+
+app.post('/api/quotes/:id/negotiate', (req, res) => {
+  const { id } = req.params;
+  const { note, proposed_price, preferred_start, preferred_end } = req.body;
+  
+  const sql = `
+    UPDATE quotes 
+    SET status = 'negotiating',
+        note = ?,
+        counter_price = ?,
+        work_start = ?,
+        work_end = ?
+    WHERE quote_id = ?
+  `;
+
+  db.query(sql, [note, proposed_price, preferred_start, preferred_end, id], (err, result) => {
+    if (err) {
+      console.error('Error updating quote:', err);
+      return res.status(500).json({ error: 'Error updating quote' });
+    }
+    res.json({ success: true, message: 'Negotiation submitted successfully' });
   });
 });
 
@@ -637,6 +742,169 @@ app.post('/api/quotes/:id/update', (req, res) => {
     console.log('Quote updated successfully:', result);
     res.json({ success: true, message: 'Quote updated successfully' });
   });
+});
+
+// Add this helper function at the top of your file
+const generateQuoteId = async (db) => {
+  while (true) {
+    const randomId = Math.floor(Math.random() * (999 - 100 + 1)) + 100;
+    
+    // Check if this ID already exists
+    const [existing] = await new Promise((resolve, reject) => {
+      db.query('SELECT quote_id FROM quotes WHERE quote_id = ?', [randomId], (err, results) => {
+        if (err) reject(err);
+        else resolve(results);
+      });
+    });
+
+    if (!existing) {
+      return randomId;
+    }
+  }
+};
+
+// Update the quote creation endpoint
+app.post('/api/requests/:id/quote', async (req, res) => {
+  const { id } = req.params;
+  const { counter_price, work_start, work_end, note } = req.body;
+  
+  console.log('Creating quote from request:', { id, counter_price, work_start, work_end, note });
+
+  // Validate input
+  if (!id || id === '0') {
+    return res.status(400).json({
+      success: false,
+      error: 'Invalid request ID'
+    });
+  }
+
+  try {
+    // Generate a unique quote ID
+    const quoteId = await generateQuoteId(db);
+    console.log('Generated quote ID:', quoteId);
+
+    // First check if the request exists
+    const [request] = await new Promise((resolve, reject) => {
+      const sql = 'SELECT * FROM Requests WHERE request_id = ?';
+      console.log('Checking request with SQL:', sql, [id]);
+      
+      db.query(sql, [id], (err, results) => {
+        if (err) {
+          console.error('Error checking request:', err);
+          reject(err);
+        } else {
+          console.log('Request check results:', results);
+          resolve(results);
+        }
+      });
+    });
+
+    if (!request) {
+      return res.status(404).json({ 
+        success: false, 
+        error: 'Request not found' 
+      });
+    }
+
+    // Start transaction
+    await new Promise((resolve, reject) => {
+      db.beginTransaction(err => {
+        if (err) {
+          console.error('Transaction start error:', err);
+          reject(err);
+        } else {
+          resolve();
+        }
+      });
+    });
+
+    try {
+      // 1. Update request status
+      await new Promise((resolve, reject) => {
+        const sql = 'UPDATE Requests SET status = ? WHERE request_id = ?';
+        console.log('Updating request with SQL:', sql, ['accepted', id]);
+        
+        db.query(sql, ['accepted', id], (err) => {
+          if (err) {
+            console.error('Request update error:', err);
+            reject(err);
+          } else {
+            resolve();
+          }
+        });
+      });
+
+      // 2. Create quote
+      const quoteResult = await new Promise((resolve, reject) => {
+        const sql = `
+          INSERT INTO quotes (
+            quote_id,
+            request_id,
+            counter_price,
+            work_start,
+            work_end,
+            status,
+            note
+          ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        `;
+        
+        const values = [
+          quoteId,
+          id,
+          counter_price,
+          work_start,
+          work_end,
+          'pending',
+          note || ''
+        ];
+        
+        console.log('Creating quote with SQL:', sql, values);
+        
+        db.query(sql, values, (err, result) => {
+          if (err) {
+            console.error('Quote creation error:', err);
+            reject(err);
+          } else {
+            resolve(result);
+          }
+        });
+      });
+
+      // Commit transaction
+      await new Promise((resolve, reject) => {
+        db.commit(err => {
+          if (err) {
+            console.error('Commit error:', err);
+            reject(err);
+          } else {
+            resolve();
+          }
+        });
+      });
+
+      console.log('Quote created successfully, quote ID:', quoteId);
+
+      res.json({
+        success: true,
+        message: 'Quote created successfully',
+        quote_id: quoteId
+      });
+
+    } catch (error) {
+      console.error('Transaction error:', error);
+      await new Promise(resolve => db.rollback(() => resolve()));
+      throw error;
+    }
+
+  } catch (error) {
+    console.error('Error creating quote:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to create quote',
+      details: error.message,
+      stack: error.stack
+    });
+  }
 });
 
 // Set up the web server listener
