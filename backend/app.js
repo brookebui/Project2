@@ -14,7 +14,7 @@ const db = mysql.createConnection({
     host: 'localhost',
     user: 'root',
     password: '',
-    database: 'driveway_mgmt',
+    database: 'project 2',
     port: 3306
 });
 
@@ -259,13 +259,21 @@ app.get('/api/requests', (req, res) => {
   });
 });
 
-// Bills endpoint
+// Update the bills endpoint
 app.get('/api/bills', (req, res) => {
   console.log('Bills endpoint hit');
   const sql = `
-    SELECT bill_id, order_id, amount_due, status, created_at
-    FROM bills
-    ORDER BY bill_id DESC
+    SELECT DISTINCT
+      b.bill_id,
+      b.order_id,
+      b.amount_due,
+      b.status,
+      b.created_at,
+      o.quote_id
+    FROM bills b
+    LEFT JOIN orders o ON b.order_id = o.order_id
+    WHERE b.bill_id > 0
+    ORDER BY b.created_at DESC
   `;
   
   db.query(sql, (err, data) => {
@@ -319,118 +327,48 @@ app.get('/api/orders', (req, res) => {
       work_start,
       work_end,
       final_price,
-      status
+      status,
+      created_at
     FROM orders
-    ORDER BY order_id DESC
+    WHERE order_id > 0
+    ORDER BY created_at DESC
   `;
   
   db.query(sql, (err, data) => {
     if (err) {
-      console.error('Order fetch error:', {
-        message: err.message,
-        code: err.code,
-        errno: err.errno,
-        sqlMessage: err.sqlMessage,
-        sqlState: err.sqlState,
-        sql: err.sql
-      });
-      return res.status(500).json({ 
-        error: 'Error fetching orders',
-        details: err.message 
-      });
+      console.error('Error fetching orders:', err);
+      return res.status(500).json({ error: 'Error fetching orders' });
     }
-
-    try {
-      console.log('Raw orders data:', data);
-      
-      const formattedData = data.map(order => {
-        try {
-          return {
-            order_id: order.order_id,
-            quote_id: order.quote_id,
-            work_start: order.work_start ? new Date(order.work_start).toISOString() : null,
-            work_end: order.work_end ? new Date(order.work_end).toISOString() : null,
-            final_price: order.final_price || 0,
-            status: order.status || 'pending'
-          };
-        } catch (formatError) {
-          console.error('Error formatting order:', order, formatError);
-          return null;
-        }
-      }).filter(Boolean);
-
-      console.log('Formatted orders data:', formattedData);
-      res.json(formattedData);
-    } catch (formatError) {
-      console.error('Error formatting orders data:', formatError);
-      return res.status(500).json({ 
-        error: 'Error processing orders data',
-        details: formatError.message 
-      });
-    }
+    console.log('Orders data:', data);
+    res.json(data);
   });
 });
 
 // Group all quote-related endpoints together
 app.get('/api/quotes', (req, res) => {
   console.log('Fetching quotes...');
-  db.ping((err) => {
-    if (err) {
-      console.error('Database connection error:', err);
-    } else {
-      console.log('Database connection is alive');
-    }
-  });
-
   const sql = `
     SELECT 
-      q.quote_id,
-      q.request_id,
-      q.counter_price,
-      q.work_start,
-      q.work_end,
-      q.status,
-      q.note,
-      q.created_at
-    FROM quotes q
-    ORDER BY q.created_at DESC, q.quote_id DESC
+      quote_id,
+      request_id,
+      counter_price,
+      work_start,
+      work_end,
+      status,
+      note,
+      created_at
+    FROM quotes
+    WHERE quote_id > 0
+    ORDER BY created_at DESC
   `;
-  
-  console.log('Executing quotes query:', sql);
   
   db.query(sql, (err, data) => {
     if (err) {
       console.error('Error fetching quotes:', err);
-      console.error('SQL Error details:', err);
       return res.status(500).json({ error: 'Error fetching quotes' });
     }
-    
-    console.log('Raw quotes data before formatting:', data);
-    console.log('Number of quotes found:', data.length);
-    
-    if (data.length === 0) {
-      db.query('SELECT COUNT(*) as count FROM quotes', (err, countResult) => {
-        if (err) {
-          console.error('Error counting quotes:', err);
-        } else {
-          console.log('Total quotes in database:', countResult[0].count);
-        }
-      });
-    }
-    
-    // Format the data to handle nulls
-    const formattedData = data.map(quote => ({
-      ...quote,
-      status: quote.status || 'pending',
-      counter_price: quote.counter_price || 0,
-      work_start: quote.work_start || null,
-      work_end: quote.work_end || null,
-      note: quote.note || ''
-    }));
-
-    console.log('Formatted quotes data:', formattedData);
-    console.log('Number of formatted quotes:', formattedData.length);
-    res.json(formattedData);
+    console.log('Quotes data:', data);
+    res.json(data);
   });
 });
 
@@ -935,6 +873,136 @@ app.post('/api/requests/:id/quote', async (req, res) => {
       error: 'Failed to create quote',
       details: error.message,
       stack: error.stack
+    });
+  }
+});
+
+// Add this helper function at the top of your file
+const generateBillId = async (db) => {
+  while (true) {
+    const randomId = Math.floor(Math.random() * (999 - 100 + 1)) + 100;
+    
+    // Check if this ID already exists
+    const [existing] = await new Promise((resolve, reject) => {
+      db.query('SELECT bill_id FROM bills WHERE bill_id = ?', [randomId], (err, results) => {
+        if (err) reject(err);
+        else resolve(results);
+      });
+    });
+
+    if (!existing) {
+      return randomId;
+    }
+  }
+};
+
+// Update the bill creation endpoint
+app.post('/api/bills/create', async (req, res) => {
+  const { order_id, amount_due } = req.body;
+  
+  console.log('Creating bill with data:', { order_id, amount_due });
+
+  if (!order_id || !amount_due) {
+    return res.status(400).json({
+      success: false,
+      error: 'Missing required fields'
+    });
+  }
+
+  try {
+    // Start transaction
+    await new Promise((resolve, reject) => {
+      db.beginTransaction(err => {
+        if (err) {
+          console.error('Transaction start error:', err);
+          reject(err);
+        } else {
+          resolve();
+        }
+      });
+    });
+
+    try {
+      // Generate unique bill ID
+      const billId = Math.floor(Math.random() * (999 - 100 + 1)) + 100;
+      console.log('Generated bill ID:', billId);
+
+      // Create bill with status explicitly set to 'pending'
+      await new Promise((resolve, reject) => {
+        const sql = `
+          INSERT INTO bills 
+          (bill_id, order_id, amount_due, status, created_at) 
+          VALUES (?, ?, ?, 'pending', NOW())
+        `;
+        
+        const values = [billId, order_id, amount_due];
+        console.log('Creating bill with values:', values);
+        
+        db.query(sql, values, (err, result) => {
+          if (err) {
+            console.error('Bill creation error:', err);
+            console.error('SQL Error:', err.sqlMessage);
+            reject(err);
+          } else {
+            console.log('Bill created with status: pending');
+            resolve(result);
+          }
+        });
+      });
+
+      // Update order status to 'billed'
+      await new Promise((resolve, reject) => {
+        const sql = `
+          UPDATE orders 
+          SET status = 'billed' 
+          WHERE order_id = ?
+        `;
+        
+        db.query(sql, [order_id], (err, result) => {
+          if (err) {
+            console.error('Order update error:', err);
+            console.error('SQL Error:', err.sqlMessage);
+            reject(err);
+          } else {
+            console.log('Order status updated to: billed');
+            resolve(result);
+          }
+        });
+      });
+
+      // Commit transaction
+      await new Promise((resolve, reject) => {
+        db.commit(err => {
+          if (err) {
+            console.error('Commit error:', err);
+            reject(err);
+          } else {
+            resolve();
+          }
+        });
+      });
+
+      console.log('Bill created successfully with ID:', billId);
+      res.json({
+        success: true,
+        message: 'Bill created successfully',
+        bill_id: billId,
+        status: 'pending'
+      });
+
+    } catch (error) {
+      // Rollback on error
+      await new Promise(resolve => db.rollback(() => resolve()));
+      throw error;
+    }
+
+  } catch (error) {
+    console.error('Error in bill creation:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to create bill',
+      details: error.message,
+      sqlMessage: error.sqlMessage
     });
   }
 });

@@ -385,6 +385,43 @@ function DavidDashboard() {
     </table>
   );
 
+  const handleCreateBill = async (order) => {
+    if (!window.confirm('Are you sure you want to create a bill for this order?')) {
+      return;
+    }
+
+    try {
+      console.log('Creating bill for order:', order);
+
+      if (!order.order_id || !order.final_price) {
+        alert('Invalid order data');
+        return;
+      }
+
+      const response = await axios.post('http://localhost:5050/api/bills/create', {
+        order_id: parseInt(order.order_id),
+        amount_due: parseFloat(order.final_price)
+      });
+
+      console.log('Bill creation response:', response.data);
+
+      if (response.data.success) {
+        alert('Bill created successfully!');
+        fetchData(); // Refresh all data
+      } else {
+        alert('Failed to create bill: ' + (response.data.error || 'Unknown error'));
+      }
+    } catch (error) {
+      console.error('Error creating bill:', error);
+      const errorMessage = error.response?.data?.details || 
+                          error.response?.data?.sqlMessage ||
+                          error.response?.data?.error || 
+                          error.message || 
+                          'Unknown error occurred';
+      alert('Error creating bill: ' + errorMessage);
+    }
+  };
+
   return (
     <div className="container mt-4">
       <h2>Dashboard</h2>
@@ -518,6 +555,7 @@ function DavidDashboard() {
                   <th>Work End</th>
                   <th>Final Price</th>
                   <th>Status</th>
+                  <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -529,6 +567,19 @@ function DavidDashboard() {
                     <td>{new Date(order.work_end).toLocaleDateString()}</td>
                     <td>${order.final_price}</td>
                     <td>{order.status}</td>
+                    <td>
+                      {order.status !== 'billed' && (
+                        <button
+                          className="btn btn-primary btn-sm"
+                          onClick={() => handleCreateBill(order)}
+                        >
+                          Process
+                        </button>
+                      )}
+                      {order.status === 'billed' && (
+                        <span className="text-muted">Billed</span>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>
