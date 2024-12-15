@@ -587,6 +587,58 @@ app.post('/api/requests/:id/respond', (req, res) => {
   });
 });
 
+// Add endpoint to update quotes
+app.post('/api/quotes/:id/update', (req, res) => {
+  const { id } = req.params;
+  const { counter_price, work_start, work_end, note, status } = req.body;
+  
+  console.log('Updating quote:', { id, counter_price, work_start, work_end, note, status });
+
+  // Ensure all required fields have values
+  const updateData = {
+    counter_price: counter_price || 0,
+    work_start: work_start || new Date().toISOString().slice(0, 16).replace('T', ' ') + ':00',
+    work_end: work_end || new Date().toISOString().slice(0, 16).replace('T', ' ') + ':00',
+    note: note || '',
+    status: status || 'pending'
+  };
+
+  const sql = `
+    UPDATE quotes 
+    SET counter_price = ?,
+        work_start = ?,
+        work_end = ?,
+        note = ?,
+        status = ?
+    WHERE quote_id = ?
+  `;
+
+  db.query(sql, [
+    updateData.counter_price,
+    updateData.work_start,
+    updateData.work_end,
+    updateData.note,
+    updateData.status,
+    id
+  ], (err, result) => {
+    if (err) {
+      console.error('Error updating quote:', err);
+      console.error('Failed SQL:', sql);
+      console.error('Failed values:', [
+        updateData.counter_price,
+        updateData.work_start,
+        updateData.work_end,
+        updateData.note,
+        updateData.status,
+        id
+      ]);
+      return res.status(500).json({ error: 'Error updating quote' });
+    }
+    console.log('Quote updated successfully:', result);
+    res.json({ success: true, message: 'Quote updated successfully' });
+  });
+});
+
 // Set up the web server listener
 app.listen(5050, () => {
     console.log("Server is listening on port 5050.");

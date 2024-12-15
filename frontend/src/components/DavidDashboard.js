@@ -29,6 +29,13 @@ function DavidDashboard() {
     work_start: '',
     work_end: ''
   });
+  const [quoteRevision, setQuoteRevision] = useState({
+    counter_price: '',
+    work_start: '',
+    work_end: '',
+    note: '',
+    status: ''
+  });
 
   const handleBillAction = (bill) => {
     alert(`Processing bill ${bill.bill_id} for $${bill.amount_due}`);
@@ -241,6 +248,76 @@ function DavidDashboard() {
     }
   };
 
+  const handleReviseQuote = (quote) => {
+    setSelectedQuote(quote);
+    const formatDateForInput = (dateString) => {
+      if (!dateString) return '';
+      const date = new Date(dateString);
+      return date.toISOString().slice(0, 16); // Get YYYY-MM-DDThh:mm format
+    };
+    
+    setQuoteRevision({
+      counter_price: quote.counter_price,
+      work_start: formatDateForInput(quote.work_start),
+      work_end: formatDateForInput(quote.work_end),
+      note: '',
+      status: 'revised'
+    });
+  };
+
+  const handleQuitNegotiation = async (quote) => {
+    if (window.confirm('Are you sure you want to quit the negotiation? This cannot be undone.')) {
+      try {
+        await axios.post(
+          `http://localhost:5050/api/quotes/${quote.quote_id}/update`,
+          {
+            status: 'closed',
+            note: 'Negotiation ended by David Smith'
+          }
+        );
+        fetchData();
+      } catch (error) {
+        console.error('Error closing quote:', error);
+        console.error('Error details:', error.response?.data);
+        alert('Error closing quote');
+      }
+    }
+  };
+
+  const handleRevisionSubmit = async (e) => {
+    e.preventDefault();
+    if (!selectedQuote) return;
+    
+    const formattedData = {
+      ...quoteRevision,
+      work_start: quoteRevision.work_start.replace('T', ' ') + ':00',
+      work_end: quoteRevision.work_end.replace('T', ' ') + ':00',
+      counter_price: parseFloat(quoteRevision.counter_price)
+    };
+    
+    console.log('Sending revision data:', formattedData);
+    
+    try {
+      await axios.post(
+        `http://localhost:5050/api/quotes/${selectedQuote.quote_id}/update`,
+        formattedData
+      );
+      setSelectedQuote(null);
+      setQuoteRevision({
+        counter_price: '',
+        work_start: '',
+        work_end: '',
+        note: '',
+        status: ''
+      });
+      fetchData();
+    } catch (error) {
+      console.error('Error updating quote:', error.response?.data || error.message);
+      console.error('Full error:', error);
+      alert('Error updating quote');
+    }
+  };
+
   return (
     <div className="container mt-4">
       <h2>Dashboard</h2>
@@ -324,20 +401,20 @@ function DavidDashboard() {
                     </td>
                     <td>
                       {quote.status === 'pending' && (
-                        <>
+                        <div className="btn-group">
                           <button
-                            className="btn btn-danger btn-sm me-2"
-                            onClick={() => handleReject(quote)}
+                            className="btn btn-warning btn-sm"
+                            onClick={() => handleReviseQuote(quote)}
                           >
-                            Reject
+                            Revise Quote
                           </button>
                           <button
-                            className="btn btn-primary btn-sm"
-                            onClick={() => handleCounter(quote)}
+                            className="btn btn-danger btn-sm ms-1"
+                            onClick={() => handleQuitNegotiation(quote)}
                           >
-                            Counter
+                            Quit
                           </button>
-                        </>
+                        </div>
                       )}
                     </td>
                   </tr>
@@ -388,16 +465,16 @@ function DavidDashboard() {
                       {request.status === 'pending' && (
                         <div className="btn-group">
                           <button
-                            className="btn btn-danger btn-sm"
-                            onClick={() => handleRequestReject(request)}
-                          >
-                            Reject
-                          </button>
-                          <button
-                            className="btn btn-primary btn-sm ms-1"
+                            className="btn btn-primary btn-sm"
                             onClick={() => handleRequestAccept(request)}
                           >
                             Create Quote
+                          </button>
+                          <button
+                            className="btn btn-danger btn-sm ms-1"
+                            onClick={() => handleRequestReject(request)}
+                          >
+                            Reject
                           </button>
                         </div>
                       )}
@@ -670,6 +747,93 @@ function DavidDashboard() {
                     </button>
                     <button type="submit" className="btn btn-primary">
                       {requestResponse.status === 'rejected' ? 'Reject' : 'Create Quote'}
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {selectedQuote && (
+        <div className="modal-overlay">
+          <div className="modal-dialog">
+            <div className="modal-content">
+              <div className="modal-header">
+                <h5 className="modal-title">Revise Quote #{selectedQuote.quote_id}</h5>
+                <button
+                  type="button"
+                  className="btn-close"
+                  onClick={() => setSelectedQuote(null)}
+                />
+              </div>
+              <div className="modal-body">
+                <form onSubmit={handleRevisionSubmit}>
+                  <div className="mb-3">
+                    <label className="form-label">Counter Price ($)</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      className="form-control"
+                      value={quoteRevision.counter_price}
+                      onChange={(e) => setQuoteRevision(prev => ({
+                        ...prev,
+                        counter_price: e.target.value
+                      }))}
+                      required
+                    />
+                  </div>
+                  <div className="mb-3">
+                    <label className="form-label">Work Start</label>
+                    <input
+                      type="datetime-local"
+                      className="form-control"
+                      value={quoteRevision.work_start}
+                      onChange={(e) => setQuoteRevision(prev => ({
+                        ...prev,
+                        work_start: e.target.value
+                      }))}
+                      required
+                    />
+                  </div>
+                  <div className="mb-3">
+                    <label className="form-label">Work End</label>
+                    <input
+                      type="datetime-local"
+                      className="form-control"
+                      value={quoteRevision.work_end}
+                      onChange={(e) => setQuoteRevision(prev => ({
+                        ...prev,
+                        work_end: e.target.value
+                      }))}
+                      required
+                    />
+                  </div>
+                  <div className="mb-3">
+                    <label className="form-label">Note</label>
+                    <textarea
+                      className="form-control"
+                      rows="4"
+                      value={quoteRevision.note}
+                      onChange={(e) => setQuoteRevision(prev => ({
+                        ...prev,
+                        note: e.target.value
+                      }))}
+                      required
+                      placeholder="Explain the changes in this revision"
+                    />
+                  </div>
+                  <div className="modal-footer">
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      onClick={() => setSelectedQuote(null)}
+                    >
+                      Cancel
+                    </button>
+                    <button type="submit" className="btn btn-primary">
+                      Send Revision
                     </button>
                   </div>
                 </form>
