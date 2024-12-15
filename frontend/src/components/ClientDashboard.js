@@ -10,30 +10,26 @@ function ClientDashboard() {
     note: '',
     photos: []
   });
-
   const [quotes, setQuotes] = useState([]);
+  const [selectedQuote, setSelectedQuote] = useState(null);
+  const [quoteAction, setQuoteAction] = useState({
+    status: '',
+    note: ''
+  });
 
-  const fetchRequests = async () => {
+  const fetchQuotes = async () => {
     try {
-      const response = await fetch('http://localhost:5050/requests'); 
-      const data = await response.json();
-      console.log('Fetched data:', data); 
-  
-      if (data.success) {
-        console.log('Fetched quotes:', data.quotes); 
-        setQuotes(data.quotes); 
-      } else {
-        console.error('Failed to fetch requests:', data.message);
-      }
+      const response = await axios.get('http://localhost:5050/api/quotes');
+      setQuotes(response.data);
     } catch (error) {
-      console.error('Error fetching requests:', error);
+      console.error('Error fetching quotes:', error);
     }
   };
 
-  // Fetch the requests when the component mounts
+  // Fetch quotes from the API
   useEffect(() => {
-    fetchRequests();
-  }, []); // Empty dependency array to run only once on component mount
+    fetchQuotes();
+  }, []);
 
   // Handle input changes
   const handleChange = (e) => {
@@ -104,6 +100,38 @@ function ClientDashboard() {
     } catch (error) {
       console.error('Quote request error:', error);
       alert('An error occurred submitting the quote request');
+    }
+  };
+
+  const handleQuoteAction = (quote) => {
+    setSelectedQuote(quote);
+    setQuoteAction({
+      status: '',
+      note: ''
+    });
+  };
+
+  const handleQuoteActionSubmit = async (e) => {
+    e.preventDefault();
+    if (!selectedQuote) return;
+    
+    try {
+      await axios.post(
+        `http://localhost:5050/api/quotes/${selectedQuote.quote_id}/respond`,
+        {
+          ...quoteAction,
+          quote_id: selectedQuote.quote_id
+        }
+      );
+      setSelectedQuote(null);
+      setQuoteAction({
+        status: '',
+        note: ''
+      });
+      fetchQuotes();
+    } catch (error) {
+      console.error('Error responding to quote:', error);
+      alert('Error responding to quote');
     }
   };
 
@@ -180,40 +208,54 @@ function ClientDashboard() {
   );
 
   const renderQuotesTable = () => (
-    <table className="table">
-        <thead>
-            <tr>
-                <th>Date</th>
-                <th>Status</th>
-                <th>Proposed Price</th>
-                <th>Actions</th>
+    <table className="table mt-4">
+      <thead>
+        <tr>
+          <th>Quote ID</th>
+          <th>Request ID</th>
+          <th>Counter Price</th>
+          <th>Work Start</th>
+          <th>Work End</th>
+          <th>Status</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {quotes.length > 0 ? (
+          quotes.map((quote) => (
+            <tr key={quote.quote_id}>
+              <td>{quote.quote_id}</td>
+              <td>{quote.request_id}</td>
+              <td>${quote.counter_price.toFixed(2)}</td>
+              <td>{quote.work_start ? new Date(quote.work_start).toLocaleString() : 'N/A'}</td>
+              <td>{quote.work_end ? new Date(quote.work_end).toLocaleString() : 'N/A'}</td>
+              <td>{quote.status}</td>
+              <td>
+                {quote.status === 'pending' && (
+                  <button
+                    className="btn btn-primary btn-sm"
+                    onClick={() => handleQuoteAction(quote)}
+                  >
+                    Review
+                  </button>
+                )}
+                {quote.note && (
+                  <button
+                    className="btn btn-info btn-sm ms-1"
+                    onClick={() => alert(quote.note)}
+                  >
+                    View Note
+                  </button>
+                )}
+              </td>
             </tr>
-        </thead>
-        <tbody>
-            {quotes && quotes.length > 0 ? (
-                quotes.map((quote) => (
-                    <tr key={quote.request_id}> 
-                        <td>{new Date(quote.created_at).toLocaleDateString()}</td>
-                        <td>{quote.status}</td>
-                        <td>${quote.proposed_price.toFixed(2)}</td>
-                        <td>
-                            {quote.status === 'pending' && (
-                                <button
-                                    className="btn btn-primary btn-sm"
-                                    // onClick={() => handleReview(quote)}
-                                >
-                                    Review
-                                </button>
-                            )}
-                        </td>
-                    </tr>
-                ))
-            ) : (
-                <tr>
-                    <td colSpan="4">No quotes available</td>
-                </tr>
-            )}
-        </tbody>
+          ))
+        ) : (
+          <tr>
+            <td colSpan="7">No quotes available</td>
+          </tr>
+        )}
+      </tbody>
     </table>
   );
 
@@ -251,9 +293,15 @@ function ClientDashboard() {
         <div>
           <h3>Quote Request</h3>
           {renderQuoteRequestForm()}
-
-          <h3 className="mt-4">Your Quotes</h3>
+          <h3>Your Quotes</h3>
           {renderQuotesTable()}
+        </div>
+      )}
+
+      {activeTab === 'orders' && (
+        <div>
+          <h3>Your Requests</h3>
+          {/* {renderRequestsTable()} */}
         </div>
       )}
     </div>
