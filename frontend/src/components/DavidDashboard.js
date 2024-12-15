@@ -31,45 +31,46 @@ function DavidDashboard() {
 
   const fetchData = async () => {
     try {
-      const billsRes = await axios.get('http://localhost:5050/api/bills');
-      if (billsRes.data) {
-        console.log('Bills response:', billsRes.data);
-        setBills(billsRes.data);
-      } else {
-        setBills([]);
-      }
+      console.log('Starting to fetch data...');
       
       try {
+        const billsRes = await axios.get('http://localhost:5050/api/bills');
+        console.log('Bills response:', billsRes.data);
+        setBills(billsRes.data || []);
+      } catch (error) {
+        console.error('Error fetching bills:', error.response?.data || error.message);
+        setBills([]);
+      }
+
+      try {
         const quotesRes = await axios.get('http://localhost:5050/api/quotes');
+        console.log('Quotes response:', quotesRes.data);
         setQuotes(quotesRes.data || []);
       } catch (error) {
-        console.log('Error fetching quotes:', error);
+        console.error('Error fetching quotes:', error.response?.data || error.message);
         setQuotes([]);
       }
 
       try {
         const ordersRes = await axios.get('http://localhost:5050/api/orders');
+        console.log('Orders response:', ordersRes.data);
         setOrders(ordersRes.data || []);
       } catch (error) {
-        console.log('Error fetching orders:', error);
+        console.error('Error fetching orders:', error.response?.data || error.message);
         setOrders([]);
       }
 
       try {
         const requestsRes = await axios.get('http://localhost:5050/api/requests');
+        console.log('Requests response:', requestsRes.data);
         setRequests(requestsRes.data || []);
       } catch (error) {
-        console.log('Error fetching requests:', error);
+        console.error('Error fetching requests:', error.response?.data || error.message);
         setRequests([]);
       }
 
     } catch (error) {
-      console.error('Error details:', error.response?.data || error.message);
-      if (error.response) {
-        console.log('Error status:', error.response.status);
-        console.log('Error data:', error.response.data);
-      }
-      setBills([]);
+      console.error('General error:', error);
     }
   };
 

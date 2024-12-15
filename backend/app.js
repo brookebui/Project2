@@ -14,17 +14,26 @@ const db = mysql.createConnection({
     host: 'localhost',
     user: 'root',
     password: '',
-    database: 'driveway_mgmt',
+    database: 'project 2',
     port: 3306
 });
 
-// Database connection
+// Test database connection with enhanced error logging
 db.connect((err) => {
     if (err) {
-        console.error('Error connecting to the database:', err);
+        console.error('Error connecting to database:', err);
         return;
     }
-    console.log('Connected to the database');
+    console.log('Connected to database successfully');
+    
+    // Test query to verify connection
+    db.query('SELECT 1', (err, results) => {
+        if (err) {
+            console.error('Error executing test query:', err);
+        } else {
+            console.log('Database connection verified');
+        }
+    });
 });
 
 app.use(cors());
@@ -213,6 +222,132 @@ app.post('/quotes/request', upload.array('photos', 5), (req, res) => {
 
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
+// Requests endpoint
+app.get('/api/requests', (req, res) => {
+  console.log('Fetching requests...');
+  const sql = `
+    SELECT r.*, c.first_name, c.last_name 
+    FROM requests r
+    JOIN clients c ON r.client_id = c.client_id
+    ORDER BY r.created_at DESC
+  `;
+  
+  db.query(sql, (err, data) => {
+    if (err) {
+      console.error('Error fetching requests:', err);
+      return res.status(500).json({ error: 'Error fetching requests' });
+    }
+    console.log('Requests found:', data.length);
+    res.json(data);
+  });
+});
+
+// Bills endpoint
+app.get('/api/bills', (req, res) => {
+  console.log('Bills endpoint hit');
+  const sql = `
+    SELECT * FROM bills 
+    ORDER BY bill_id DESC
+  `;
+  
+  db.query(sql, (err, data) => {
+    if (err) {
+      console.error('Error fetching bills:', err);
+      return res.status(500).json({ error: 'Error fetching bills' });
+    }
+    console.log('Bills data:', data);
+    res.json(data);
+  });
+});
+
+// Orders endpoint
+app.get('/api/orders', (req, res) => {
+  console.log('Fetching orders...');
+  const sql = `
+    SELECT 
+      order_id,
+      quote_id,
+      work_start,
+      work_end,
+      final_price,
+      status
+    FROM orders
+    ORDER BY order_id DESC
+  `;
+  
+  db.query(sql, (err, data) => {
+    if (err) {
+      console.error('Order fetch error:', {
+        message: err.message,
+        code: err.code,
+        errno: err.errno,
+        sqlMessage: err.sqlMessage,
+        sqlState: err.sqlState,
+        sql: err.sql
+      });
+      return res.status(500).json({ 
+        error: 'Error fetching orders',
+        details: err.message 
+      });
+    }
+
+    try {
+      console.log('Raw orders data:', data);
+      
+      const formattedData = data.map(order => {
+        try {
+          return {
+            order_id: order.order_id,
+            quote_id: order.quote_id,
+            work_start: order.work_start ? new Date(order.work_start).toISOString() : null,
+            work_end: order.work_end ? new Date(order.work_end).toISOString() : null,
+            final_price: order.final_price || 0,
+            status: order.status || 'pending'
+          };
+        } catch (formatError) {
+          console.error('Error formatting order:', order, formatError);
+          return null;
+        }
+      }).filter(Boolean);
+
+      console.log('Formatted orders data:', formattedData);
+      res.json(formattedData);
+    } catch (formatError) {
+      console.error('Error formatting orders data:', formatError);
+      return res.status(500).json({ 
+        error: 'Error processing orders data',
+        details: formatError.message 
+      });
+    }
+  });
+});
+
+// Quotes endpoint
+app.get('/api/quotes', (req, res) => {
+  console.log('Fetching quotes...');
+  const sql = `
+    SELECT q.*, r.property_address, r.square_feet, r.proposed_price,
+           c.first_name, c.last_name
+    FROM quotes q
+    JOIN requests r ON q.request_id = r.request_id
+    JOIN clients c ON r.client_id = c.client_id
+    ORDER BY q.quote_id DESC
+  `;
+  
+  db.query(sql, (err, data) => {
+    if (err) {
+      console.error('Error fetching quotes:', err);
+      return res.status(500).json({ error: 'Error fetching quotes' });
+    }
+    console.log('Quotes found:', data.length);
+    res.json(data);
+  });
+});
+
+// Add this test endpoint
+app.get('/test', (req, res) => {
+  res.json({ message: 'Server is running' });
+});
 
 // Set up the web server listener
 app.listen(5050, () => {
