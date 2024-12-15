@@ -17,30 +17,42 @@ function Login() {
 
     const handleSubmit = (event) => {
         event.preventDefault();
+    
+        // Validate the form
         const err = Validation(values);
         setErrors(err);
-        
-        // Check if it's David's credentials
-        if (values.email === 'david@example.com' && values.password === 'davidpassword') {
-            navigate('/DavidDashboard');
-            return;
-        }
-
-        if(err.email === "" && err.password === "") {
+    
+        // If no validation errors
+        if (err.email === "" && err.password === "") {
+            // Make the API call to log in
             axios.post('http://localhost:5050/login', values)
             .then(response => {
-                if(response.data.success){
-                    navigate('/ClientDashboard')
-                } else{
-                    alert("Invalid email or password")
+                if (response.data.success) {
+                    const { clientID, user } = response.data;
+
+                    console.log("Client ID before storing in localStorage:", clientID);  // Debug log
+
+                    // Store clientID in localStorage
+                    localStorage.setItem('clientId', clientID);
+
+                    // Optionally, store user data if needed
+                    localStorage.setItem('userName', user.first_name);  // Example: storing first name
+
+                    // Navigate to the client dashboard
+                    navigate('/ClientDashboard');
+                } else {
+                    alert("Invalid email or password");
                 }
             })
             .catch(err => {
                 console.log(err);
-                alert("Invalid email or password")
-            })
+                alert("Invalid email or password");
+            });
+
+
         }
-    }
+    };
+    
 
     const handleAccessAsDavid = () => {
         navigate('/DavidDashboard');
