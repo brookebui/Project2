@@ -226,19 +226,66 @@ app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 app.get('/api/requests', (req, res) => {
   console.log('Fetching requests...');
   const sql = `
-    SELECT r.*, c.first_name, c.last_name 
+    SELECT 
+      r.request_id,
+      r.client_id,
+      r.property_address,
+      r.square_feet,
+      r.proposed_price,
+      r.note,
+      r.status,
+      r.created_at,
+      c.first_name,
+      c.last_name
     FROM requests r
-    JOIN clients c ON r.client_id = c.client_id
+    LEFT JOIN clients c ON r.client_id = c.client_id
     ORDER BY r.created_at DESC
   `;
+  console.log('Executing SQL:', sql);
   
   db.query(sql, (err, data) => {
     if (err) {
       console.error('Error fetching requests:', err);
       return res.status(500).json({ error: 'Error fetching requests' });
     }
-    console.log('Requests found:', data.length);
-    res.json(data);
+    console.log('Raw request data:', data);
+    
+    // Get photos in a separate query
+    const getPhotos = async (requestId) => {
+      return new Promise((resolve, reject) => {
+        const photoSql = `
+          SELECT photo_path 
+          FROM request_photos 
+          WHERE request_id = ?
+        `;
+        db.query(photoSql, [requestId], (err, photoData) => {
+          if (err) {
+            console.error('Error fetching photos:', err);
+            resolve([]);
+          } else {
+            resolve(photoData.map(p => p.photo_path));
+          }
+        });
+      });
+    };
+
+    // Format the data to ensure status is correct and handle nulls
+    Promise.all(data.map(async request => {
+      const photos = await getPhotos(request.request_id);
+      return {
+        ...request,
+        first_name: request.first_name || 'Unknown',
+        last_name: request.last_name || 'Client',
+        status: request.status?.toLowerCase() || 'pending',
+        photos: photos
+      };
+    })).then(formattedData => {
+      console.log('Formatted request data:', formattedData);
+      res.json(formattedData);
+    }).catch(error => {
+      console.error('Error formatting data:', error);
+      res.status(500).json({ error: 'Error processing requests' });
+    });
   });
 });
 
@@ -325,28 +372,195 @@ app.get('/api/orders', (req, res) => {
 // Quotes endpoint
 app.get('/api/quotes', (req, res) => {
   console.log('Fetching quotes...');
+  db.ping((err) => {
+    if (err) {
+      console.error('Database connection error:', err);
+    } else {
+      console.log('Database connection is alive');
+    }
+  });
+
   const sql = `
-    SELECT q.*, r.property_address, r.square_feet, r.proposed_price,
-           c.first_name, c.last_name
+    SELECT 
+      q.quote_id,
+      q.request_id,
+      q.counter_price,
+      q.work_start,
+      q.work_end,
+      q.status,
+      q.note,
+      q.created_at
     FROM quotes q
-    JOIN requests r ON q.request_id = r.request_id
-    JOIN clients c ON r.client_id = c.client_id
-    ORDER BY q.quote_id DESC
+    ORDER BY q.created_at DESC, q.quote_id DESC
   `;
+  
+  console.log('Executing quotes query:', sql);
   
   db.query(sql, (err, data) => {
     if (err) {
       console.error('Error fetching quotes:', err);
+      console.error('SQL Error details:', err);
       return res.status(500).json({ error: 'Error fetching quotes' });
     }
-    console.log('Quotes found:', data.length);
-    res.json(data);
+    
+    console.log('Raw quotes data before formatting:', data);
+    console.log('Number of quotes found:', data.length);
+    
+    if (data.length === 0) {
+      db.query('SELECT COUNT(*) as count FROM quotes', (err, countResult) => {
+        if (err) {
+          console.error('Error counting quotes:', err);
+        } else {
+          console.log('Total quotes in database:', countResult[0].count);
+        }
+      });
+    }
+    
+    // Format the data to handle nulls
+    const formattedData = data.map(quote => ({
+      ...quote,
+      status: quote.status || 'pending',
+      counter_price: quote.counter_price || 0,
+      work_start: quote.work_start || null,
+      work_end: quote.work_end || null,
+      note: quote.note || ''
+    }));
+
+    console.log('Formatted quotes data:', formattedData);
+    console.log('Number of formatted quotes:', formattedData.length);
+    res.json(formattedData);
   });
 });
 
 // Add this test endpoint
 app.get('/test', (req, res) => {
   res.json({ message: 'Server is running' });
+});
+
+// Add endpoint to handle quote request responses
+app.post('/api/requests/:id/respond', (req, res) => {
+  const { id } = req.params;
+  const { status, note, counter_price, work_start, work_end } = req.body;
+  
+  // Start a transaction
+  db.beginTransaction(err => {
+    if (err) {
+      console.error('Error starting transaction:', err);
+      return res.status(500).json({ error: 'Error processing response' });
+    }
+
+    // Update request status
+    const updateRequestSql = `
+      UPDATE requests 
+      SET status = ?, 
+          note = ?
+      WHERE request_id = ?
+    `;
+
+    db.query(updateRequestSql, [status, note, id], (err, result) => {
+      if (err) {
+        return db.rollback(() => {
+          console.error('Error updating request:', err);
+          res.status(500).json({ error: 'Error updating request' });
+        });
+      }
+
+      // If accepting and creating quote
+      if (status === 'accepted') {
+        // Check for existing quote IDs and generate a unique one
+        const checkQuoteId = () => {
+          return new Promise((resolve, reject) => {
+            const generateId = () => Math.floor(Math.random() * 999) + 1;
+            let quoteId = generateId();
+            
+            const checkSql = "SELECT quote_id FROM quotes WHERE quote_id = ?";
+            db.query(checkSql, [quoteId], (err, result) => {
+              if (err) {
+                reject(err);
+              } else if (result.length > 0) {
+                // ID exists, try again
+                resolve(checkQuoteId());
+              } else {
+                resolve(quoteId);
+              }
+            });
+          });
+        };
+        
+        checkQuoteId().then(randomQuoteId => {
+          console.log('Generated quote ID:', randomQuoteId);  // Debug log
+
+          const createQuoteSql = `
+            INSERT INTO quotes (
+              quote_id,
+              request_id, 
+              counter_price, 
+              work_start, 
+              work_end, 
+              status,
+              note,
+              created_at
+            ) VALUES (?, ?, ?, ?, ?, 'pending', ?, CURRENT_TIMESTAMP)
+          `;
+
+          const values = [
+            randomQuoteId,
+            id,
+            counter_price || 0,
+            work_start || new Date(),
+            work_end || new Date(),
+            'pending',
+            note || ''  // Add note with empty string default
+          ];
+          console.log('Insert values:', values);  // Debug log
+
+          db.query(createQuoteSql, values, (err, result) => {
+            if (err) {
+              console.error('SQL Error:', err);  // Debug log
+              console.error('Failed SQL:', createQuoteSql);
+              console.error('Failed values:', values);
+              return db.rollback(() => {
+                console.error('Error creating quote:', err);
+                res.status(500).json({ error: 'Error creating quote' });
+              });
+            }
+            console.log('Quote created successfully:', result);
+
+            db.commit(err => {
+              if (err) {
+                return db.rollback(() => {
+                  console.error('Error committing transaction:', err);
+                  res.status(500).json({ error: 'Error completing response' });
+                });
+              }
+              res.json({ 
+                success: true, 
+                message: 'Quote created successfully',
+                quote_id: randomQuoteId
+              });
+            });
+          });
+        }).catch(err => {
+          console.error('Error generating quote ID:', err);
+          return res.status(500).json({ error: 'Error generating quote ID' });
+        });
+      } else {
+        // If rejecting, just commit the request update
+        db.commit(err => {
+          if (err) {
+            return db.rollback(() => {
+              console.error('Error committing transaction:', err);
+              res.status(500).json({ error: 'Error completing response' });
+            });
+          }
+          res.json({ 
+            success: true, 
+            message: 'Request rejected successfully' 
+          });
+        });
+      }
+    });
+  });
 });
 
 // Set up the web server listener

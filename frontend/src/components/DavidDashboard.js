@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
+import './DavidDashboard.css';
 
 function DavidDashboard() {
-  const [activeTab, setActiveTab] = useState('requests');
+  const [activeTab, setActiveTab] = useState('quotes');
   const [quotes, setQuotes] = useState([]);
   const [orders, setOrders] = useState([]);
   const [bills, setBills] = useState([]);
@@ -19,6 +20,14 @@ function DavidDashboard() {
     counter_price: '',
     work_start: '',
     work_end: 0
+  });
+  const [selectedRequest, setSelectedRequest] = useState(null);
+  const [requestResponse, setRequestResponse] = useState({
+    status: '',
+    note: '',
+    counter_price: '',
+    work_start: '',
+    work_end: ''
   });
 
   const handleBillAction = (bill) => {
@@ -44,10 +53,15 @@ function DavidDashboard() {
 
       try {
         const quotesRes = await axios.get('http://localhost:5050/api/quotes');
+        console.log('Raw quotes response:', quotesRes);
         console.log('Quotes response:', quotesRes.data);
+        if (quotesRes.data && quotesRes.data.length > 0) {
+          console.log('First quote:', quotesRes.data[0]);
+        }
         setQuotes(quotesRes.data || []);
       } catch (error) {
         console.error('Error fetching quotes:', error.response?.data || error.message);
+        console.error('Full error object:', error);
         setQuotes([]);
       }
 
@@ -178,6 +192,55 @@ function DavidDashboard() {
     }
   };
 
+  const handleRequestReject = (request) => {
+    setSelectedRequest(request);
+    setRequestResponse({
+      status: 'rejected',
+      note: '',
+      counter_price: '',
+      work_start: '',
+      work_end: ''
+    });
+  };
+
+  const handleRequestAccept = (request) => {
+    setSelectedRequest(request);
+    setRequestResponse({
+      status: 'accepted',
+      note: '',
+      counter_price: '',
+      work_start: '',
+      work_end: ''
+    });
+  };
+
+  const handleRequestResponse = async (e) => {
+    e.preventDefault();
+    if (!selectedRequest) return;
+    
+    try {
+      await axios.post(
+        `http://localhost:5050/api/requests/${selectedRequest.request_id}/respond`,
+        requestResponse
+      );
+      setSelectedRequest(null);
+      setRequestResponse({
+        status: '',
+        note: '',
+        counter_price: '',
+        work_start: '',
+        work_end: ''
+      });
+      await Promise.all([
+        fetchData(),
+        fetchQuotes()
+      ]);
+    } catch (error) {
+      console.error('Error responding to request:', error);
+      alert('Error responding to request');
+    }
+  };
+
   return (
     <div className="container mt-4">
       <h2>Dashboard</h2>
@@ -185,10 +248,10 @@ function DavidDashboard() {
       <ul className="nav nav-tabs mb-4">
         <li className="nav-item">
           <button 
-            className={`nav-link ${activeTab === 'requests' ? 'active' : ''}`}
-            onClick={() => setActiveTab('requests')}
+            className={`nav-link ${activeTab === 'quotes' ? 'active' : ''}`}
+            onClick={() => setActiveTab('quotes')}
           >
-            Quote Requests
+            Quotes
           </button>
         </li>
         <li className="nav-item">
@@ -196,7 +259,7 @@ function DavidDashboard() {
             className={`nav-link ${activeTab === 'requestsTable' ? 'active' : ''}`}
             onClick={() => setActiveTab('requestsTable')}
           >
-            Requests Table
+            Requests
           </button>
         </li>
         <li className="nav-item">
@@ -225,55 +288,56 @@ function DavidDashboard() {
         </li>
       </ul>
 
-      {activeTab === 'requests' && (
+      {activeTab === 'quotes' && (
         <div>
-          <h3>Quote Requests</h3>
-          {requests.length === 0 ? (
-            <div className="alert alert-info">No requests found</div>
+          <h3>Quotes</h3>
+          {console.log('Current quotes:', quotes)}
+          {quotes.length === 0 ? (
+            <div className="alert alert-info">No quotes found</div>
           ) : (
             <table className="table">
               <thead>
                 <tr>
-                  <th>Date</th>
+                  <th>Quote ID</th>
+                  <th>Request ID</th>
                   <th>Client</th>
-                  <th>Property Address</th>
-                  <th>Square Feet</th>
-                  <th>Proposed Price</th>
+                  <th>Counter Price</th>
+                  <th>Work Start</th>
+                  <th>Work End</th>
                   <th>Status</th>
-                  <th>Photos</th>
                   <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {requests.map((request) => (
-                  <tr key={request.request_id}>
-                    <td>{new Date(request.created_at).toLocaleDateString()}</td>
-                    <td>{`${request.first_name} ${request.last_name}`}</td>
-                    <td>{request.property_address}</td>
-                    <td>{request.square_feet}</td>
-                    <td>${request.proposed_price}</td>
-                    <td>{request.status}</td>
+                {quotes.map((quote) => (
+                  <tr key={`quote-${quote.quote_id}-${quote.created_at}`}>
+                    <td>{quote.quote_id}</td>
+                    <td>{quote.request_id}</td>
+                    <td>Client {quote.request_id}</td>
+                    <td>${quote.counter_price || 0}</td>
+                    <td>{quote.work_start ? new Date(quote.work_start).toLocaleString() : 'Not set'}</td>
+                    <td>{quote.work_end ? new Date(quote.work_end).toLocaleString() : 'Not set'}</td>
                     <td>
-                      {request.photos && request.photos.split(',').map((photo, index) => (
-                        <a 
-                          key={index} 
-                          href={photo} 
-                          target="_blank" 
-                          rel="noopener noreferrer"
-                          className="me-2"
-                        >
-                          Photo {index + 1}
-                        </a>
-                      ))}
+                      <span className={`badge bg-${getStatusBadgeColor(quote.status || 'pending')}`}>
+                        {quote.status || 'pending'}
+                      </span>
                     </td>
                     <td>
-                      {request.status === 'pending' && (
-                        <button
-                          className="btn btn-primary btn-sm"
-                          onClick={() => handleCreateQuote(request)}
-                        >
-                          Create Quote
-                        </button>
+                      {quote.status === 'pending' && (
+                        <>
+                          <button
+                            className="btn btn-danger btn-sm me-2"
+                            onClick={() => handleReject(quote)}
+                          >
+                            Reject
+                          </button>
+                          <button
+                            className="btn btn-primary btn-sm"
+                            onClick={() => handleCounter(quote)}
+                          >
+                            Counter
+                          </button>
+                        </>
                       )}
                     </td>
                   </tr>
@@ -301,6 +365,7 @@ function DavidDashboard() {
                   <th>Proposed Price</th>
                   <th>Note</th>
                   <th>Status</th>
+                  <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -317,6 +382,28 @@ function DavidDashboard() {
                       <span className={`badge bg-${getStatusBadgeColor(request.status)}`}>
                         {request.status}
                       </span>
+                    </td>
+                    <td className="text-nowrap">
+                      {console.log('Request status:', request.status)}
+                      {request.status === 'pending' && (
+                        <div className="btn-group">
+                          <button
+                            className="btn btn-danger btn-sm"
+                            onClick={() => handleRequestReject(request)}
+                          >
+                            Reject
+                          </button>
+                          <button
+                            className="btn btn-primary btn-sm ms-1"
+                            onClick={() => handleRequestAccept(request)}
+                          >
+                            Create Quote
+                          </button>
+                        </div>
+                      )}
+                      {request.status !== 'pending' && (
+                        <span className="text-muted">No actions available</span>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -454,7 +541,7 @@ function DavidDashboard() {
       )}
 
       {selectedItem && (
-        <div className="modal show d-block" tabIndex="-1">
+        <div className="modal-overlay">
           <div className="modal-dialog">
             <div className="modal-content">
               <div className="modal-header">
@@ -495,7 +582,100 @@ function DavidDashboard() {
               </div>
             </div>
           </div>
-          <div className="modal-backdrop show"></div>
+        </div>
+      )}
+
+      {selectedRequest && (
+        <div className="modal-overlay">
+          <div className="modal-dialog">
+            <div className="modal-content">
+              <div className="modal-header">
+                <h5 className="modal-title">
+                  {requestResponse.status === 'rejected' ? 'Reject Request' : 'Create Quote'}
+                </h5>
+                <button
+                  type="button"
+                  className="btn-close"
+                  onClick={() => setSelectedRequest(null)}
+                />
+              </div>
+              <div className="modal-body">
+                <form onSubmit={handleRequestResponse}>
+                  <div className="mb-3">
+                    <label className="form-label">Note</label>
+                    <textarea
+                      className="form-control"
+                      rows="4"
+                      value={requestResponse.note}
+                      onChange={(e) => setRequestResponse(prev => ({
+                        ...prev,
+                        note: e.target.value
+                      }))}
+                      required
+                    />
+                  </div>
+                  
+                  {requestResponse.status === 'accepted' && (
+                    <>
+                      <div className="mb-3">
+                        <label className="form-label">Counter Price ($)</label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          className="form-control"
+                          value={requestResponse.counter_price}
+                          onChange={(e) => setRequestResponse(prev => ({
+                            ...prev,
+                            counter_price: e.target.value
+                          }))}
+                          required
+                        />
+                      </div>
+                      <div className="mb-3">
+                        <label className="form-label">Work Start</label>
+                        <input
+                          type="datetime-local"
+                          className="form-control"
+                          value={requestResponse.work_start}
+                          onChange={(e) => setRequestResponse(prev => ({
+                            ...prev,
+                            work_start: e.target.value
+                          }))}
+                          required
+                        />
+                      </div>
+                      <div className="mb-3">
+                        <label className="form-label">Work End</label>
+                        <input
+                          type="datetime-local"
+                          className="form-control"
+                          value={requestResponse.work_end}
+                          onChange={(e) => setRequestResponse(prev => ({
+                            ...prev,
+                            work_end: e.target.value
+                          }))}
+                          required
+                        />
+                      </div>
+                    </>
+                  )}
+                  
+                  <div className="modal-footer">
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      onClick={() => setSelectedRequest(null)}
+                    >
+                      Cancel
+                    </button>
+                    <button type="submit" className="btn btn-primary">
+                      {requestResponse.status === 'rejected' ? 'Reject' : 'Create Quote'}
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          </div>
         </div>
       )}
     </div>
