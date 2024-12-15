@@ -42,22 +42,22 @@ app.use(express.urlencoded({ extended: false }));
 
 const generateClientID = () => {
     const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-    let clientID = '';
+    let client_id = '';
     for (let i = 0; i < 5; i++) {
-        clientID += characters.charAt(Math.floor(Math.random() * characters.length));
+        client_id += characters.charAt(Math.floor(Math.random() * characters.length));
     }
-    return clientID;
+    return client_id;
 };
 
 // Registration Endpoint
 app.post('/Registration', (request, response) => {
-    const { firstname, lastname, address, phoneNumber, email, creditCard, password } = request.body;
+    const { first_name, last_name, address, phone_number, email, credit_card, password } = request.body;
 
-    const clientID = generateClientID();
+    const client_id = generateClientID();
 
-    const sql = "INSERT INTO Clients (ClientID, FirstName, LastName, Address, Phone, Email, CreditCard, Password) VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
+    const sql = "INSERT INTO Clients (client_id, first_name, last_name, address, phone, email, credit_card, password) VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
 
-    db.query(sql, [clientID, firstname, lastname, address, phoneNumber, email, creditCard, password], (err, data) => {
+    db.query(sql, [client_id, first_name, last_name, address, phone_number, email, credit_card, password], (err, data) => {
         if (err) {
             console.error('Error during registration:', err);
             return response.status(500).json({ error: "Error creating account", details: err.message });
@@ -65,7 +65,7 @@ app.post('/Registration', (request, response) => {
         return response.json({
             success: true,
             data: data,
-            clientID: clientID
+            client_id: client_id
         });
     });
 });
@@ -74,7 +74,7 @@ app.post('/Registration', (request, response) => {
 app.post('/login', (request, response) => {
     const { email, password } = request.body;
 
-    const sql = "SELECT * FROM Clients WHERE Email = ? AND Password = ?";
+    const sql = "SELECT * FROM Clients WHERE email = ? AND password = ?";
 
     db.query(sql, [email, password], (err, data) => {
         if (err) {
@@ -82,16 +82,15 @@ app.post('/login', (request, response) => {
             return response.status(500).json({ error: "Error during login" });
         }
 
-        // If user found, return the ClientID and other user data
         if (data.length > 0) {
             const client = data[0];  
-            const clientID = client.ClientID;  
+            const client_id = client.client_id;  
 
-            console.log("Client ID extracted:", clientID);  
+            console.log("Client ID extracted:", client_id);  
 
             return response.json({
                 success: true,
-                clientID: clientID,  // Send the ClientID to the frontend
+                client_id: client_id, 
                 user: client,  
             });
         } else {
@@ -222,6 +221,31 @@ app.post('/quotes/request', upload.array('photos', 5), (req, res) => {
 
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
+app.get('/requests', async (req, res) => {
+    try {
+        const result = await db.query('SELECT * FROM Requests ORDER BY created_at DESC');
+        console.log('Query result:', result); 
+        
+        const rows = result[0]; 
+
+        if (!rows || rows.length === 0) {
+            console.log('No requests found.');
+            return res.json({ success: true, requests: [] });
+        }
+
+        res.json({ success: true, requests: rows });
+    } catch (err) {
+        console.error('Error fetching requests:', err.message, err.stack);
+
+        res.status(500).json({
+            success: false,
+            message: 'Failed to retrieve requests',
+            details: err.message
+        });
+    }
+});
+
+  
 // Requests endpoint
 app.get('/api/requests', (req, res) => {
   console.log('Fetching requests...');

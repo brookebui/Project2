@@ -8,16 +8,16 @@ function Validation(values){
         error.email = ""
     }
 
-    if(values.firstname === ""){
-        error.firstname = "First name is required"
+    if(values.first_name === ""){
+        error.first_name = "First name is required"
     } else{
-        error.firstname = ""
+        error.first_name = ""
     }
 
-    if(values.lastname === ""){
-        error.lastname = "Last name is required"
+    if(values.last_name === ""){
+        error.last_name = "Last name is required"
     } else{
-        error.lastname = ""
+        error.last_name = ""
     }
 
     if(values.address === ""){
@@ -26,16 +26,16 @@ function Validation(values){
         error.address = ""
     }
 
-    if(values.creditCard === ""){
-        error.creditCard = "Credit card is required"
+    if(values.credit_card === ""){
+        error.credit_card = "Credit card is required"
     } else{
-        error.phoneNumber = ""
+        error.phone_number = ""
     }
 
-    if(values.phoneNumber === ""){
-        error.phoneNumber = "Phone number is required"
+    if(values.phone_number === ""){
+        error.phone_number = "Phone number is required"
     } else{
-        error.phoneNumber = ""
+        error.phone_number = ""
     }
 
     if(values.password === ""){

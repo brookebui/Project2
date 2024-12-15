@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 
-function QuoteRequestForm() {
+function ClientDashboard() {
+  const [activeTab, setActiveTab] = useState('quotes');
   const [quoteRequest, setQuoteRequest] = useState({
     property_address: '',
     square_feet: '',
@@ -9,6 +10,30 @@ function QuoteRequestForm() {
     note: '',
     photos: []
   });
+
+  const [quotes, setQuotes] = useState([]);
+
+  const fetchRequests = async () => {
+    try {
+      const response = await fetch('http://localhost:5050/requests'); 
+      const data = await response.json();
+      console.log('Fetched data:', data); 
+  
+      if (data.success) {
+        console.log('Fetched quotes:', data.quotes); 
+        setQuotes(data.quotes); 
+      } else {
+        console.error('Failed to fetch requests:', data.message);
+      }
+    } catch (error) {
+      console.error('Error fetching requests:', error);
+    }
+  };
+
+  // Fetch the requests when the component mounts
+  useEffect(() => {
+    fetchRequests();
+  }, []); // Empty dependency array to run only once on component mount
 
   // Handle input changes
   const handleChange = (e) => {
@@ -21,7 +46,7 @@ function QuoteRequestForm() {
 
   // Handle photo upload
   const handlePhotoUpload = (e) => {
-    // Limit to 5 photos
+
     const files = Array.from(e.target.files).slice(0, 5);
     setQuoteRequest(prev => ({
       ...prev,
@@ -34,24 +59,22 @@ function QuoteRequestForm() {
     e.preventDefault();
 
     // Get clientID from localStorage
-    const clientID = localStorage.getItem('clientId');
+    const client_id = localStorage.getItem('client_id');
     
-    if (!clientID) {
+    if (!client_id) {
       alert('You must be logged in to submit a quote request');
       return;
     }
 
-    // Create FormData for file upload
     const formData = new FormData();
     
-    // Append clientID and text fields to match backend expectations
-    formData.append('client_id', clientID);  // Add clientID from localStorage
+    formData.append('client_id', client_id);  // Add clientID from localStorage
     formData.append('property_address', quoteRequest.property_address);
     formData.append('square_feet', quoteRequest.square_feet);
     formData.append('proposed_price', quoteRequest.proposed_price);
     formData.append('note', quoteRequest.note);
     
-    // Append photos
+
     quoteRequest.photos.forEach((photo) => {
       formData.append('photos', photo);
     });
@@ -65,7 +88,7 @@ function QuoteRequestForm() {
 
       if (response.data.success) {
         alert('Quote request submitted successfully!');
-        // Reset form
+
         setQuoteRequest({
           property_address: '',
           square_feet: '',
@@ -73,7 +96,7 @@ function QuoteRequestForm() {
           note: '',
           photos: []
         });
-        // Clear file input
+
         e.target.reset();
       } else {
         alert('Failed to submit quote request');
@@ -84,7 +107,7 @@ function QuoteRequestForm() {
     }
   };
 
-  return (
+  const renderQuoteRequestForm = () => (
     <div className="container mt-4">
       <form onSubmit={submitQuoteRequest}>
         <div className="row">
@@ -155,6 +178,86 @@ function QuoteRequestForm() {
       </form>
     </div>
   );
+
+  const renderQuotesTable = () => (
+    <table className="table">
+        <thead>
+            <tr>
+                <th>Date</th>
+                <th>Status</th>
+                <th>Proposed Price</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {quotes && quotes.length > 0 ? (
+                quotes.map((quote) => (
+                    <tr key={quote.request_id}> 
+                        <td>{new Date(quote.created_at).toLocaleDateString()}</td>
+                        <td>{quote.status}</td>
+                        <td>${quote.proposed_price.toFixed(2)}</td>
+                        <td>
+                            {quote.status === 'pending' && (
+                                <button
+                                    className="btn btn-primary btn-sm"
+                                    // onClick={() => handleReview(quote)}
+                                >
+                                    Review
+                                </button>
+                            )}
+                        </td>
+                    </tr>
+                ))
+            ) : (
+                <tr>
+                    <td colSpan="4">No quotes available</td>
+                </tr>
+            )}
+        </tbody>
+    </table>
+  );
+
+  return (
+    <div className="container mt-4">
+      <h2>Client Dashboard</h2>
+      <ul className="nav nav-tabs mb-4">
+        <li className="nav-item">
+          <button 
+            className={`nav-link ${activeTab === 'quotes' ? 'active' : ''}`}
+            onClick={() => setActiveTab('quotes')}
+          >
+            Quotes
+          </button>
+        </li>
+        <li className="nav-item">
+          <button 
+            className={`nav-link ${activeTab === 'orders' ? 'active' : ''}`}
+            onClick={() => setActiveTab('orders')}
+          >
+            Orders
+          </button>
+        </li>
+        <li className="nav-item">
+          <button 
+            className={`nav-link ${activeTab === 'bills' ? 'active' : ''}`}
+            onClick={() => setActiveTab('bills')}
+          >
+            Bills
+          </button>
+        </li>
+      </ul>
+
+      {activeTab === 'quotes' && (
+        <div>
+          <h3>Quote Request</h3>
+          {renderQuoteRequestForm()}
+
+          <h3 className="mt-4">Your Quotes</h3>
+          {renderQuotesTable()}
+        </div>
+      )}
+    </div>
+  );
 }
 
-export default QuoteRequestForm;
+export default ClientDashboard;
