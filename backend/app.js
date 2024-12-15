@@ -15,8 +15,31 @@ const db = mysql.createConnection({
     host: "localhost",
     user: "root",
     password: "",
-    database: "driveway_mgmt",
+    database: "project 2",
     port: 3306
+});
+
+// Handle disconnects
+function handleDisconnect() {
+  db.on('error', function(err) {
+    console.log('Database error:', err);
+    if (err.code === 'PROTOCOL_CONNECTION_LOST') {
+      handleDisconnect();
+    } else {
+      throw err;
+    }
+  });
+}
+
+handleDisconnect();
+
+// Test database connection
+db.connect((err) => {
+    if (err) {
+        console.error('Error connecting to database:', err);
+        return;
+    }
+    console.log('Connected to database');
 });
 
 app.use(cors());
@@ -158,6 +181,161 @@ app.get('/testdb', (request, response) => {
     result
     .then(data => response.json({data: data}))
     .catch(err => console.log(err));
+});
+
+// Add these quote-related endpoints
+app.get('/api/quotes', (req, res) => {
+  const sql = `
+    SELECT q.quote_id, q.request_id, q.counter_price, 
+           q.work_start, q.work_end, q.note, q.status, 
+           q.created_at, c.first_name, c.last_name, c.email,
+           r.property_address, r.square_feet, r.proposed_price
+    FROM quotes q
+    JOIN requests r ON q.request_id = r.request_id
+    JOIN clients c ON r.client_id = c.client_id
+    ORDER BY q.created_at DESC
+  `;
+  
+  db.query(sql, (err, data) => {
+    if (err) {
+      console.error(err);
+      return res.status(500).json({ error: 'Error fetching quotes' });
+    }
+    res.json(data);
+  });
+});
+
+app.post('/api/quotes/:id/respond', (req, res) => {
+  const { id } = req.params;
+  const { status, note, counter_price, work_start, work_end } = req.body;
+  
+  const sql = `
+    UPDATE quotes 
+    SET status = ?,
+        note = ?,
+        counter_price = ?,
+        work_start = ?,
+        work_end = ?,
+        created_at = CURRENT_TIMESTAMP
+    WHERE quote_id = ?
+  `;
+  
+  db.query(sql, [status, note, counter_price, work_start, work_end, id], (err, result) => {
+    if (err) {
+      console.error(err);
+      return res.status(500).json({ error: 'Error updating quote' });
+    }
+    res.json({ success: true });
+  });
+});
+
+// Add bills endpoint
+app.get('/api/bills', (req, res) => {
+  const sql = `
+    SELECT b.bill_id, b.order_id, b.amount_due, b.status, b.created_at
+    FROM bills b
+    ORDER BY b.created_at DESC
+  `;
+  
+  db.query(sql, (err, data) => {
+    if (err) {
+      console.error('MySQL Error:', {
+        code: err.code,
+        errno: err.errno,
+        sqlMessage: err.sqlMessage,
+        sqlState: err.sqlState,
+        sql: err.sql
+      });
+      return res.status(500).json({ error: 'Error fetching bills' });
+    }
+    if (!data || data.length === 0) {
+      console.log('No bills found');
+      return res.json([]);
+    }
+    console.log('Bills data:', data);
+    res.json(data);
+  });
+});
+
+// Add orders endpoint
+app.get('/api/orders', (req, res) => {
+  const sql = `
+    SELECT o.order_id, o.quote_id, o.work_start, o.work_end, 
+           o.final_price, o.status, q.request_id
+    FROM orders o
+    LEFT JOIN quotes q ON o.quote_id = q.quote_id
+    ORDER BY o.work_start DESC;
+  `;
+  
+  db.query(sql, (err, data) => {
+    if (err) {
+      console.error('Error in /api/orders:', err);
+      return res.status(500).json({ error: 'Error fetching orders' });
+    }
+    if (!data || data.length === 0) {
+      return res.json([]);
+    }
+    res.json(data);
+  });
+});
+
+// Add quote requests endpoint
+app.get('/api/requests', (req, res) => {
+  const sql = `
+    SELECT r.request_id, r.client_id, r.property_address, 
+           r.square_feet, r.proposed_price, r.note, 
+           r.status, r.created_at,
+           c.first_name, c.last_name, c.email,
+           (
+             SELECT GROUP_CONCAT(photo_path)
+             FROM request_photos rp2
+             WHERE rp2.request_id = r.request_id
+           ) as photos
+    FROM requests r
+    JOIN clients c ON r.client_id = c.client_id
+    ORDER BY r.created_at DESC
+  `;
+  
+  db.query(sql, (err, data) => {
+    if (err) {
+      console.error('Error in /api/requests:', err);
+      return res.status(500).json({ error: 'Error fetching requests' });
+    }
+    console.log('Requests data:', data);
+    res.json(data);
+  });
+});
+
+// Add endpoint to create a new quote from a request
+app.post('/api/requests/:id/quote', (req, res) => {
+  const { id } = req.params;
+  
+  const sql = `
+    INSERT INTO quotes (request_id, status, created_at)
+    VALUES (?, 'pending', CURRENT_TIMESTAMP)
+  `;
+  
+  db.query(sql, [id], (err, result) => {
+    if (err) {
+      console.error('Error creating quote:', err);
+      return res.status(500).json({ error: 'Error creating quote' });
+    }
+    
+    // Update request status
+    const updateSql = `
+      UPDATE requests 
+      SET status = 'accepted'
+      WHERE request_id = ?
+    `;
+    
+    db.query(updateSql, [id], (updateErr) => {
+      if (updateErr) {
+        console.error('Error updating request:', updateErr);
+        return res.status(500).json({ error: 'Error updating request' });
+      }
+      res.json({ success: true, quote_id: result.insertId });
+    });
+  });
 });
 
 // set up the web server listener
