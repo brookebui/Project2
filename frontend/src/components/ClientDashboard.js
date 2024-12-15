@@ -11,6 +11,7 @@ function ClientDashboard() {
     photos: []
   });
   const [quotes, setQuotes] = useState([]);
+  const [bills, setBills] = useState([]);
   const [selectedQuote, setSelectedQuote] = useState(null);
   const [quoteAction, setQuoteAction] = useState({
     status: '',
@@ -26,12 +27,20 @@ function ClientDashboard() {
     }
   };
 
-  // Fetch quotes from the API
+  const fetchBills = async () => {
+    try {
+      const response = await axios.get('http://localhost:5050/api/bills');
+      setBills(response.data);
+    } catch (error) {
+      console.error('Error fetching bills:', error);
+    }
+  };
+
   useEffect(() => {
     fetchQuotes();
+    fetchBills();
   }, []);
 
-  // Handle input changes
   const handleChange = (e) => {
     const { name, value } = e.target;
     setQuoteRequest(prev => ({
@@ -40,9 +49,7 @@ function ClientDashboard() {
     }));
   };
 
-  // Handle photo upload
   const handlePhotoUpload = (e) => {
-
     const files = Array.from(e.target.files).slice(0, 5);
     setQuoteRequest(prev => ({
       ...prev,
@@ -50,11 +57,9 @@ function ClientDashboard() {
     }));
   };
 
-  // Submit quote request
   const submitQuoteRequest = async (e) => {
     e.preventDefault();
 
-    // Get clientID from localStorage
     const client_id = localStorage.getItem('client_id');
     
     if (!client_id) {
@@ -64,7 +69,7 @@ function ClientDashboard() {
 
     const formData = new FormData();
     
-    formData.append('client_id', client_id);  // Add clientID from localStorage
+    formData.append('client_id', client_id);
     formData.append('property_address', quoteRequest.property_address);
     formData.append('square_feet', quoteRequest.square_feet);
     formData.append('proposed_price', quoteRequest.proposed_price);
@@ -134,6 +139,43 @@ function ClientDashboard() {
       alert('Error responding to quote');
     }
   };
+
+  const [isPaying, setIsPaying] = useState(false);
+  const handlePay = (billId) => {
+    const isConfirmed = window.confirm("Are you sure you want to pay this bill?");
+    
+    if (isConfirmed) {
+      setIsPaying(true); 
+      axios
+        .delete(`http://localhost:5050/api/bills/${billId}`)
+        .then((response) => {
+          console.log(response.data);
+          setBills((prevBills) => prevBills.filter((bill) => bill.bill_id !== billId));
+          alert("Bill deleted successfully.");
+        })
+        .catch((error) => {
+          console.error("Error deleting bill:", error);
+          if (error.response) {
+            alert(`Error: ${error.response.data.message}`);
+          } else if (error.request) {
+
+            alert("Network error. Please check your connection.");
+          } else {
+
+            alert("There was an issue removing the bill. Please try again.");
+          }
+        })
+        .finally(() => {
+          setIsPaying(false); 
+        });
+    }
+  };
+
+// Handle Dispute Action
+const handleDispute = (billId) => {
+  console.log(`Disputing bill ID: ${billId}`);
+  // Implement logic for submitting a dispute (e.g., open a form for submitting a dispute note)
+};
 
   const renderQuoteRequestForm = () => (
     <div className="container mt-4">
@@ -259,6 +301,52 @@ function ClientDashboard() {
     </table>
   );
 
+  const renderBillsTable = () => (
+    <table className="table mt-4">
+      <thead>
+        <tr>
+          <th>Bill ID</th>
+          <th>Order ID</th>
+          <th>Amount Due</th>
+          <th>Status</th>
+          <th>Created At</th>
+          <th>Actions</th> {/* New Actions column */}
+        </tr>
+      </thead>
+      <tbody>
+        {bills.length > 0 ? (
+          bills.map((bill) => (
+            <tr key={bill.bill_id}>
+              <td>{bill.bill_id}</td>
+              <td>{bill.order_id}</td>
+              <td>${bill.amount_due ? bill.amount_due.toFixed(2) : 'N/A'}</td>
+              <td>{bill.status}</td>
+              <td>{new Date(bill.created_at).toLocaleDateString()}</td>
+              <td>
+                <button
+                  className="btn btn-success"
+                  onClick={() => handlePay(bill.bill_id)}
+                >
+                  Pay Immediately
+                </button>
+                <button
+                  className="btn btn-warning ml-2"
+                  onClick={() => handleDispute(bill.bill_id)}
+                >
+                  Dispute
+                </button>
+              </td>
+            </tr>
+          ))
+        ) : (
+          <tr>
+            <td colSpan="6">No bills available</td>
+          </tr>
+        )}
+      </tbody>
+    </table>
+  );
+  
   return (
     <div className="container mt-4">
       <h2>Client Dashboard</h2>
@@ -302,6 +390,13 @@ function ClientDashboard() {
         <div>
           <h3>Your Requests</h3>
           {/* {renderRequestsTable()} */}
+        </div>
+      )}
+
+      {activeTab === 'bills' && (
+        <div>
+          <h3>Your Bills</h3>
+          {renderBillsTable()}
         </div>
       )}
     </div>

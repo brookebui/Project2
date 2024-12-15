@@ -14,7 +14,7 @@ const db = mysql.createConnection({
     host: 'localhost',
     user: 'root',
     password: '',
-    database: 'project 2',
+    database: 'driveway_mgmt',
     port: 3306
 });
 
@@ -317,7 +317,8 @@ app.get('/api/requests', (req, res) => {
 app.get('/api/bills', (req, res) => {
   console.log('Bills endpoint hit');
   const sql = `
-    SELECT * FROM bills 
+    SELECT bill_id, order_id, amount_due, status, created_at
+    FROM bills
     ORDER BY bill_id DESC
   `;
   
@@ -328,6 +329,37 @@ app.get('/api/bills', (req, res) => {
     }
     console.log('Bills data:', data);
     res.json(data);
+  });
+});
+
+// Delete bill endpoint
+app.delete('/api/bills/:billId', (req, res) => {
+  const billId = req.params.billId;
+
+  console.log(`Received request to delete bill with ID: ${billId}`);
+
+  // Validate billId
+  if (!billId || isNaN(billId)) {
+    console.log('Invalid bill ID received');
+    return res.status(400).json({ error: 'Invalid bill ID' });
+  }
+
+  const sql = 'DELETE FROM bills WHERE bill_id = ?';
+
+  db.query(sql, [billId], (err, result) => {
+    if (err) {
+      console.error('Error deleting bill:', err);
+      return res.status(500).json({ error: 'Error deleting bill', details: err.message });
+    }
+
+    console.log('Delete result:', result);
+    if (result.affectedRows === 0) {
+      console.log(`No bill found with ID: ${billId}`);
+      return res.status(404).json({ error: 'Bill not found' });
+    }
+
+    console.log(`Bill with ID ${billId} deleted successfully`);
+    res.status(200).json({ message: 'Bill deleted successfully' });
   });
 });
 
