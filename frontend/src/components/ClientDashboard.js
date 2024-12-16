@@ -243,10 +243,63 @@ function ClientDashboard() {
     }
   };
 
-// Handle Dispute Action
+const [disputeNote, setDisputeNote] = useState('');
+const [isDisputing, setIsDisputing] = useState(false);
+const [currentBillId, setCurrentBillId] = useState(null);
+
+// Handle Dispute 
 const handleDispute = (billId) => {
   console.log(`Disputing bill ID: ${billId}`);
-  // Implement logic for submitting a dispute (e.g., open a form for submitting a dispute note)
+  setCurrentBillId(billId); 
+  setIsDisputing(true); 
+};
+
+const [isLoading, setIsLoading] = useState(false);
+
+const handleDisputeSubmit = (e) => {
+  e.preventDefault();
+
+  if (!currentBillId || !disputeNote) {
+    alert('Please provide a valid bill ID and note for the dispute.');
+    return;
+  }
+
+  const isConfirmed = window.confirm("Are you sure you want to submit this dispute?");
+  
+  if (!isConfirmed) {
+    return;  
+  }
+
+  const disputeData = {
+    bill_id: currentBillId,  
+    note: disputeNote,      
+  };
+
+  setIsLoading(true); 
+
+  axios
+    .post('http://localhost:5050/api/submit-dispute', disputeData, {
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    })
+    .then((response) => {
+      console.log(response.data);
+      if (response.status === 200 && response.data.message === 'Dispute submitted successfully') {
+        alert('Dispute submitted successfully.');
+        setIsDisputing(false);  
+        setDisputeNote('');   
+      } else {
+        alert('Failed to submit dispute.');
+      }
+    })
+    .catch((error) => {
+      console.error('Error submitting dispute:', error.response ? error.response.data : error);
+      alert('An error occurred while submitting the dispute. Please try again.');
+    })
+    .finally(() => {
+      setIsLoading(false);  
+    });
 };
 
   const renderQuoteRequestForm = () => (
@@ -426,6 +479,35 @@ const handleDispute = (billId) => {
         <div>
           <h3>Your Orders</h3>
           {/* Add orders table here */}
+
+          {isDisputing && (
+            <div className="dispute-form">
+              <h4>Dispute Bill</h4>
+              <form onSubmit={handleDisputeSubmit}>
+                <div className="form-group">
+                  <label htmlFor="disputeNote">Dispute Note</label>
+                  <textarea
+                    id="disputeNote"
+                    className="form-control"
+                    value={disputeNote}
+                    onChange={(e) => setDisputeNote(e.target.value)}
+                    required
+                  />
+                </div>
+                <button type="submit" className="btn btn-danger">
+                  Submit Dispute
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-secondary ml-2"
+                  onClick={() => setIsDisputing(false)} // Close the dispute form
+                >
+                  Cancel
+                </button>
+              </form>
+            </div>
+          )}
+  
         </div>
       )}
     </div>
