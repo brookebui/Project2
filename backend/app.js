@@ -1007,7 +1007,319 @@ app.post('/api/bills/create', async (req, res) => {
   }
 });
 
-// Set up the web server listener
+// Move this endpoint BEFORE app.listen()
+app.get('/api/clients/top', (req, res) => {
+  const sql = `
+    SELECT 
+      c.client_id,
+      c.first_name,
+      c.last_name,
+      COUNT(DISTINCT o.order_id) as total_orders
+    FROM clients c
+    LEFT JOIN requests r ON c.client_id = r.client_id
+    LEFT JOIN quotes q ON r.request_id = q.request_id
+    LEFT JOIN orders o ON q.quote_id = o.quote_id
+    WHERE o.order_id IS NOT NULL
+    GROUP BY c.client_id, c.first_name, c.last_name
+    HAVING COUNT(DISTINCT o.order_id) = (
+      SELECT COUNT(DISTINCT o2.order_id)
+      FROM clients c2
+      LEFT JOIN requests r2 ON c2.client_id = r2.client_id
+      LEFT JOIN quotes q2 ON r2.request_id = q2.request_id
+      LEFT JOIN orders o2 ON q2.quote_id = o2.quote_id
+      WHERE o2.order_id IS NOT NULL
+      GROUP BY c2.client_id
+      ORDER BY COUNT(DISTINCT o2.order_id) DESC
+      LIMIT 1
+    )
+    ORDER BY total_orders DESC, c.first_name, c.last_name
+  `;
+
+  console.log('Executing top clients query:', sql);
+
+  db.query(sql, (err, data) => {
+    if (err) {
+      console.error('Error fetching top clients:', err);
+      return res.status(500).json({ 
+        error: 'Error fetching top clients',
+        details: err.message 
+      });
+    }
+
+    console.log('Top clients data:', data);
+    
+    // Handle case where no orders exist
+    if (data.length === 0) {
+      return res.json([{
+        client_id: 'N/A',
+        first_name: 'No',
+        last_name: 'Orders',
+        total_orders: 0
+      }]);
+    }
+
+    // Format the response
+    const formattedData = data.map(client => ({
+      client_id: client.client_id,
+      first_name: client.first_name,
+      last_name: client.last_name,
+      total_orders: parseInt(client.total_orders)
+    }));
+
+    res.json(formattedData);
+  });
+});
+
+// Add endpoint for difficult clients (3 requests, no follow-up)
+app.get('/api/clients/difficult', (req, res) => {
+  console.log('Difficult clients endpoint hit');
+  
+  const sql = `
+    SELECT 
+      c.client_id,
+      c.first_name,
+      c.last_name,
+      COUNT(r.request_id) as request_count
+    FROM clients c
+    INNER JOIN requests r ON c.client_id = r.client_id
+    WHERE r.status = 'pending'
+    GROUP BY c.client_id, c.first_name, c.last_name
+    HAVING COUNT(r.request_id) >= 3
+  `;
+
+  console.log('Executing query:', sql);
+
+  db.query(sql, (err, results) => {
+    if (err) {
+      console.error('Database error:', err);
+      return res.status(500).json({ 
+        error: 'Database error', 
+        details: err.message 
+      });
+    }
+
+    console.log('Query results:', results);
+
+    if (results.length === 0) {
+      return res.json([{
+        client_id: 'N/A',
+        first_name: 'No',
+        last_name: 'Difficult Clients',
+        request_count: 0
+      }]);
+    }
+
+    res.json(results);
+  });
+});
+
+// Update the this month's quotes endpoint to count total quotes
+app.get('/api/quotes/month', (req, res) => {
+  const sql = `
+    SELECT 
+      COUNT(*) as total_quotes,
+      COUNT(CASE WHEN status = 'accepted' THEN 1 END) as accepted_quotes,
+      COUNT(CASE WHEN status = 'pending' THEN 1 END) as pending_quotes
+    FROM quotes
+  `;
+
+  console.log('Executing quotes count query:', sql);
+
+  db.query(sql, (err, data) => {
+    if (err) {
+      console.error('Error counting quotes:', err);
+      return res.status(500).json({ 
+        error: 'Error counting quotes',
+        details: err.message 
+      });
+    }
+
+    console.log('Quotes count data:', data);
+
+    const stats = {
+      total_quotes: data[0].total_quotes,
+      accepted_quotes: data[0].accepted_quotes,
+      pending_quotes: data[0].pending_quotes
+    };
+
+    res.json([{
+      quote_id: 'TOTAL',
+      first_name: 'Total',
+      last_name: 'Quotes',
+      counter_price: 0,
+      work_start: null,
+      work_end: null,
+      created_at: new Date(),
+      status: `${stats.total_quotes} (${stats.accepted_quotes} accepted, ${stats.pending_quotes} pending)`
+    }]);
+  });
+});
+
+// Add endpoint for prospective clients (registered but no requests)
+app.get('/api/clients/prospective', (req, res) => {
+  const sql = `
+    SELECT 
+      c.client_id,
+      c.first_name,
+      c.last_name,
+      c.email
+    FROM clients c
+    LEFT JOIN requests r ON c.client_id = r.client_id
+    WHERE r.request_id IS NULL
+    ORDER BY c.first_name, c.last_name
+  `;
+
+  db.query(sql, (err, data) => {
+    if (err) {
+      console.error('Error fetching prospective clients:', err);
+      return res.status(500).json({ error: 'Error fetching prospective clients' });
+    }
+    res.json(data);
+  });
+});
+
+// Add endpoint for largest driveways
+app.get('/api/driveways/largest', (req, res) => {
+  const sql = `
+    WITH MaxSquareFeet AS (
+      SELECT MAX(square_feet) as max_feet
+      FROM requests
+      WHERE status = 'accepted'
+    )
+    SELECT 
+      r.request_id,
+      r.property_address,
+      r.square_feet,
+      c.first_name,
+      c.last_name
+    FROM requests r
+    JOIN clients c ON r.client_id = c.client_id
+    JOIN MaxSquareFeet msf ON r.square_feet = msf.max_feet
+    WHERE r.status = 'accepted'
+    ORDER BY r.property_address
+  `;
+
+  db.query(sql, (err, data) => {
+    if (err) {
+      console.error('Error fetching largest driveways:', err);
+      return res.status(500).json({ error: 'Error fetching largest driveways' });
+    }
+    res.json(data);
+  });
+});
+
+// Add endpoint for overdue bills (>1 week old)
+app.get('/api/bills/overdue', (req, res) => {
+  const sql = `
+    SELECT 
+      b.bill_id,
+      b.amount_due,
+      b.created_at,
+      DATEDIFF(CURRENT_DATE(), b.created_at) as days_overdue,
+      c.first_name,
+      c.last_name
+    FROM bills b
+    JOIN orders o ON b.order_id = o.order_id
+    JOIN quotes q ON o.quote_id = q.quote_id
+    JOIN requests r ON q.request_id = r.request_id
+    JOIN clients c ON r.client_id = c.client_id
+    WHERE b.status = 'pending'
+    AND DATEDIFF(CURRENT_DATE(), b.created_at) > 7
+    ORDER BY days_overdue DESC
+  `;
+
+  db.query(sql, (err, data) => {
+    if (err) {
+      console.error('Error fetching overdue bills:', err);
+      return res.status(500).json({ error: 'Error fetching overdue bills' });
+    }
+    res.json(data);
+  });
+});
+
+// Add endpoint for bad clients (never paid within a week)
+app.get('/api/clients/bad', (req, res) => {
+  const sql = `
+    SELECT DISTINCT
+      c.client_id,
+      c.first_name,
+      c.last_name,
+      COUNT(b.bill_id) as unpaid_bills
+    FROM clients c
+    JOIN requests r ON c.client_id = r.client_id
+    JOIN quotes q ON r.request_id = q.request_id
+    JOIN orders o ON q.quote_id = o.quote_id
+    JOIN bills b ON o.order_id = b.order_id
+    WHERE b.status = 'pending'
+    AND DATEDIFF(CURRENT_DATE(), b.created_at) > 7
+    GROUP BY c.client_id, c.first_name, c.last_name
+    ORDER BY unpaid_bills DESC
+  `;
+
+  db.query(sql, (err, data) => {
+    if (err) {
+      console.error('Error fetching bad clients:', err);
+      return res.status(500).json({ error: 'Error fetching bad clients' });
+    }
+    res.json(data);
+  });
+});
+
+// Update the good clients endpoint
+app.get('/api/clients/good', (req, res) => {
+  const sql = `
+    SELECT 
+      c.client_id,
+      c.first_name,
+      c.last_name,
+      COUNT(b.bill_id) as quick_payments
+    FROM clients c
+    JOIN requests r ON c.client_id = r.client_id
+    JOIN quotes q ON r.request_id = q.request_id
+    JOIN orders o ON q.quote_id = o.quote_id
+    JOIN bills b ON o.order_id = b.order_id
+    WHERE b.status = 'paid'
+    GROUP BY c.client_id, c.first_name, c.last_name
+    ORDER BY quick_payments DESC
+  `;
+
+  console.log('Executing good clients query:', sql);
+
+  db.query(sql, (err, data) => {
+    if (err) {
+      console.error('Error fetching good clients:', err);
+      console.error('SQL Error:', err);
+      return res.status(500).json({ 
+        error: 'Error fetching good clients',
+        details: err.message 
+      });
+    }
+
+    console.log('Good clients data:', data);
+
+    // Handle empty results
+    if (data.length === 0) {
+      return res.json([{
+        client_id: 'N/A',
+        first_name: 'No',
+        last_name: 'Good Clients',
+        quick_payments: 0
+      }]);
+    }
+
+    // Format the response
+    const formattedData = data.map(client => ({
+      client_id: client.client_id,
+      first_name: client.first_name,
+      last_name: client.last_name,
+      quick_payments: parseInt(client.quick_payments)
+    }));
+
+    res.json(formattedData);
+  });
+});
+
+// This should be the last line in your file
 app.listen(5050, () => {
     console.log("Server is listening on port 5050.");
 });

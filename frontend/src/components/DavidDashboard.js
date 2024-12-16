@@ -36,6 +36,22 @@ function DavidDashboard() {
     note: '',
     status: ''
   });
+  const [bigClients, setBigClients] = useState([]);
+  const [showBigClients, setShowBigClients] = useState(false);
+  const [showDifficultClients, setShowDifficultClients] = useState(false);
+  const [showMonthQuotes, setShowMonthQuotes] = useState(false);
+  const [showProspectiveClients, setShowProspectiveClients] = useState(false);
+  const [showLargestDriveways, setShowLargestDriveways] = useState(false);
+  const [showOverdueBills, setShowOverdueBills] = useState(false);
+  const [showBadClients, setShowBadClients] = useState(false);
+  const [showGoodClients, setShowGoodClients] = useState(false);
+  const [difficultClients, setDifficultClients] = useState([]);
+  const [monthQuotes, setMonthQuotes] = useState([]);
+  const [prospectiveClients, setProspectiveClients] = useState([]);
+  const [largestDriveways, setLargestDriveways] = useState([]);
+  const [overdueBills, setOverdueBills] = useState([]);
+  const [badClients, setBadClients] = useState([]);
+  const [goodClients, setGoodClients] = useState([]);
 
   const handleBillAction = (bill) => {
     alert(`Processing bill ${bill.bill_id} for $${bill.amount_due}`);
@@ -422,9 +438,474 @@ function DavidDashboard() {
     }
   };
 
+  const fetchBigClients = async () => {
+    try {
+      const response = await axios.get('http://localhost:5050/api/clients/top');
+      console.log('Big clients response:', response.data);
+      setBigClients(response.data);
+      setShowBigClients(true);
+    } catch (error) {
+      console.error('Error fetching big clients:', error);
+      alert('Error fetching big clients: ' + (error.response?.data?.error || error.message));
+    }
+  };
+
+  const fetchDifficultClients = async () => {
+    try {
+      const response = await axios.get('http://localhost:5050/api/clients/difficult');
+      setDifficultClients(response.data);
+      setShowDifficultClients(true);
+    } catch (error) {
+      console.error('Error fetching difficult clients:', error);
+      alert('Error fetching difficult clients: ' + (error.response?.data?.error || error.message));
+    }
+  };
+
+  const fetchMonthQuotes = async () => {
+    try {
+      const response = await axios.get('http://localhost:5050/api/quotes/month');
+      setMonthQuotes(response.data);
+      setShowMonthQuotes(true);
+    } catch (error) {
+      console.error('Error fetching month quotes:', error);
+      alert('Error fetching month quotes: ' + (error.response?.data?.error || error.message));
+    }
+  };
+
+  const fetchProspectiveClients = async () => {
+    try {
+      const response = await axios.get('http://localhost:5050/api/clients/prospective');
+      setProspectiveClients(response.data);
+      setShowProspectiveClients(true);
+    } catch (error) {
+      console.error('Error fetching prospective clients:', error);
+      alert('Error fetching prospective clients: ' + (error.response?.data?.error || error.message));
+    }
+  };
+
+  const fetchLargestDriveways = async () => {
+    try {
+      const response = await axios.get('http://localhost:5050/api/driveways/largest');
+      setLargestDriveways(response.data);
+      setShowLargestDriveways(true);
+    } catch (error) {
+      console.error('Error fetching largest driveways:', error);
+      alert('Error fetching largest driveways: ' + (error.response?.data?.error || error.message));
+    }
+  };
+
+  const fetchOverdueBills = async () => {
+    try {
+      const response = await axios.get('http://localhost:5050/api/bills/overdue');
+      setOverdueBills(response.data);
+      setShowOverdueBills(true);
+    } catch (error) {
+      console.error('Error fetching overdue bills:', error);
+      alert('Error fetching overdue bills: ' + (error.response?.data?.error || error.message));
+    }
+  };
+
+  const fetchBadClients = async () => {
+    try {
+      const response = await axios.get('http://localhost:5050/api/clients/bad');
+      setBadClients(response.data);
+      setShowBadClients(true);
+    } catch (error) {
+      console.error('Error fetching bad clients:', error);
+      alert('Error fetching bad clients: ' + (error.response?.data?.error || error.message));
+    }
+  };
+
+  const fetchGoodClients = async () => {
+    try {
+      const response = await axios.get('http://localhost:5050/api/clients/good');
+      setGoodClients(response.data);
+      setShowGoodClients(true);
+    } catch (error) {
+      console.error('Error fetching good clients:', error);
+      alert('Error fetching good clients: ' + (error.response?.data?.error || error.message));
+    }
+  };
+
+  const renderBigClientsModal = () => (
+    showBigClients && (
+      <div className="modal show d-block" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
+        <div className="modal-dialog">
+          <div className="modal-content">
+            <div className="modal-header">
+              <h5 className="modal-title">Top Clients</h5>
+              <button
+                type="button"
+                className="btn-close"
+                onClick={() => setShowBigClients(false)}
+              />
+            </div>
+            <div className="modal-body">
+              {bigClients.length > 0 ? (
+                <div>
+                  <h6>Clients with Most Completed Orders:</h6>
+                  <ul className="list-group">
+                    {bigClients.map((client, index) => (
+                      <li key={index} className="list-group-item">
+                        {client.first_name} {client.last_name} - {client.completed_orders} orders
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : (
+                <p>No completed orders found.</p>
+              )}
+            </div>
+            <div className="modal-footer">
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => setShowBigClients(false)}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  );
+
+  const renderDifficultClientsModal = () => (
+    showDifficultClients && (
+      <div className="modal show d-block" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
+        <div className="modal-dialog">
+          <div className="modal-content">
+            <div className="modal-header">
+              <h5 className="modal-title">Difficult Clients</h5>
+              <button
+                type="button"
+                className="btn-close"
+                onClick={() => setShowDifficultClients(false)}
+              />
+            </div>
+            <div className="modal-body">
+              {difficultClients.length > 0 ? (
+                <div>
+                  <h6>Clients with Most Rejected Requests:</h6>
+                  <ul className="list-group">
+                    {difficultClients.map((client, index) => (
+                      <li key={index} className="list-group-item">
+                        {client.first_name} {client.last_name} - {client.rejected_requests} requests
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : (
+                <p>No rejected requests found.</p>
+              )}
+            </div>
+            <div className="modal-footer">
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => setShowDifficultClients(false)}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  );
+
+  const renderMonthQuotesModal = () => (
+    showMonthQuotes && (
+      <div className="modal show d-block" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
+        <div className="modal-dialog">
+          <div className="modal-content">
+            <div className="modal-header">
+              <h5 className="modal-title">Quote Statistics</h5>
+              <button
+                type="button"
+                className="btn-close"
+                onClick={() => setShowMonthQuotes(false)}
+              />
+            </div>
+            <div className="modal-body">
+              {monthQuotes.length > 0 ? (
+                <div>
+                  <h6>Total Quotes in Month:</h6>
+                  <div className="alert alert-info">
+                    {monthQuotes[0].status}
+                  </div>
+                </div>
+              ) : (
+                <p>No quotes found in this month.</p>
+              )}
+            </div>
+            <div className="modal-footer">
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => setShowMonthQuotes(false)}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  );
+
+  const renderProspectiveClientsModal = () => (
+    showProspectiveClients && (
+      <div className="modal show d-block" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
+        <div className="modal-dialog">
+          <div className="modal-content">
+            <div className="modal-header">
+              <h5 className="modal-title">Prospective Clients</h5>
+              <button
+                type="button"
+                className="btn-close"
+                onClick={() => setShowProspectiveClients(false)}
+              />
+            </div>
+            <div className="modal-body">
+              {prospectiveClients.length > 0 ? (
+                <div>
+                  <h6>Prospective Clients:</h6>
+                  <ul className="list-group">
+                    {prospectiveClients.map((client, index) => (
+                      <li key={index} className="list-group-item">
+                        {client.first_name} {client.last_name} - {client.prospective_count} clients
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : (
+                <p>No prospective clients found.</p>
+              )}
+            </div>
+            <div className="modal-footer">
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => setShowProspectiveClients(false)}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  );
+
+  const renderLargestDrivewaysModal = () => (
+    showLargestDriveways && (
+      <div className="modal show d-block" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
+        <div className="modal-dialog">
+          <div className="modal-content">
+            <div className="modal-header">
+              <h5 className="modal-title">Largest Driveways</h5>
+              <button
+                type="button"
+                className="btn-close"
+                onClick={() => setShowLargestDriveways(false)}
+              />
+            </div>
+            <div className="modal-body">
+              {largestDriveways.length > 0 ? (
+                <div>
+                  <h6>Largest Driveways:</h6>
+                  <ul className="list-group">
+                    {largestDriveways.map((driveway, index) => (
+                      <li key={index} className="list-group-item">
+                        {driveway.first_name} {driveway.last_name} - {driveway.square_feet} square feet
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : (
+                <p>No largest driveways found.</p>
+              )}
+            </div>
+            <div className="modal-footer">
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => setShowLargestDriveways(false)}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  );
+
+  const renderOverdueBillsModal = () => (
+    showOverdueBills && (
+      <div className="modal show d-block" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
+        <div className="modal-dialog">
+          <div className="modal-content">
+            <div className="modal-header">
+              <h5 className="modal-title">Overdue Bills</h5>
+              <button
+                type="button"
+                className="btn-close"
+                onClick={() => setShowOverdueBills(false)}
+              />
+            </div>
+            <div className="modal-body">
+              {overdueBills.length > 0 ? (
+                <div>
+                  <h6>Overdue Bills:</h6>
+                  <ul className="list-group">
+                    {overdueBills.map((bill, index) => (
+                      <li key={index} className="list-group-item">
+                        {bill.first_name} {bill.last_name} - {bill.bill_id} - {bill.amount_due} - {bill.overdue_days} days overdue
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : (
+                <p>No overdue bills found.</p>
+              )}
+            </div>
+            <div className="modal-footer">
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => setShowOverdueBills(false)}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  );
+
+  const renderBadClientsModal = () => (
+    showBadClients && (
+      <div className="modal show d-block" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
+        <div className="modal-dialog">
+          <div className="modal-content">
+            <div className="modal-header">
+              <h5 className="modal-title">Bad Clients</h5>
+              <button
+                type="button"
+                className="btn-close"
+                onClick={() => setShowBadClients(false)}
+              />
+            </div>
+            <div className="modal-body">
+              {badClients.length > 0 ? (
+                <div>
+                  <h6>Bad Clients:</h6>
+                  <ul className="list-group">
+                    {badClients.map((client, index) => (
+                      <li key={index} className="list-group-item">
+                        {client.first_name} {client.last_name} - {client.bad_client_count} bad clients
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : (
+                <p>No bad clients found.</p>
+              )}
+            </div>
+            <div className="modal-footer">
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => setShowBadClients(false)}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  );
+
+  const renderGoodClientsModal = () => (
+    showGoodClients && (
+      <div className="modal show d-block" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
+        <div className="modal-dialog">
+          <div className="modal-content">
+            <div className="modal-header">
+              <h5 className="modal-title">Good Clients</h5>
+              <button
+                type="button"
+                className="btn-close"
+                onClick={() => setShowGoodClients(false)}
+              />
+            </div>
+            <div className="modal-body">
+              {goodClients.length > 0 ? (
+                <div>
+                  <h6>Good Clients:</h6>
+                  <ul className="list-group">
+                    {goodClients.map((client, index) => (
+                      <li key={index} className="list-group-item">
+                        {client.first_name} {client.last_name} - {client.good_client_count} good clients
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : (
+                <p>No good clients found.</p>
+              )}
+            </div>
+            <div className="modal-footer">
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => setShowGoodClients(false)}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  );
+
   return (
     <div className="container mt-4">
-      <h2>Dashboard</h2>
+      <div className="d-flex justify-content-between align-items-center mb-4">
+        <h2>Dashboard</h2>
+        <div className="btn-group">
+          <button className="btn btn-info" onClick={fetchBigClients}>
+            Big Clients
+          </button>
+          <button className="btn btn-warning" onClick={fetchDifficultClients}>
+            Difficult Clients
+          </button>
+          <button className="btn btn-primary" onClick={fetchMonthQuotes}>
+            This Month Quotes
+          </button>
+          <button className="btn btn-success" onClick={fetchProspectiveClients}>
+            Prospective Clients
+          </button>
+          <button className="btn btn-info" onClick={fetchLargestDriveways}>
+            Largest Driveway
+          </button>
+          <button className="btn btn-danger" onClick={fetchOverdueBills}>
+            Overdue Bills
+          </button>
+          <button className="btn btn-dark" onClick={fetchBadClients}>
+            Bad Clients
+          </button>
+          <button className="btn btn-success" onClick={fetchGoodClients}>
+            Good Clients
+          </button>
+        </div>
+      </div>
 
       <ul className="nav nav-tabs mb-4">
         <li className="nav-item">
@@ -906,6 +1387,15 @@ function DavidDashboard() {
           </div>
         </div>
       )}
+
+      {renderBigClientsModal()}
+      {renderDifficultClientsModal()}
+      {renderMonthQuotesModal()}
+      {renderProspectiveClientsModal()}
+      {renderLargestDrivewaysModal()}
+      {renderOverdueBillsModal()}
+      {renderBadClientsModal()}
+      {renderGoodClientsModal()}
     </div>
   );
 }
