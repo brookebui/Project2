@@ -363,6 +363,37 @@ app.delete('/api/bills/:billId', (req, res) => {
   });
 });
 
+app.post('/api/submit-dispute', (req, res) => {
+  const { bill_id, note } = req.body;
+
+  // Validate inputs
+  if (!bill_id || !note) {
+    return res.status(400).json({ error: 'Bill ID and note are required' });
+  }
+
+  const sql = `
+    UPDATE bills
+    SET note = ?
+    WHERE bill_id = ?
+  `;
+
+  db.query(sql, [note, bill_id], (err, result) => {
+    if (err) {
+      console.error('Error submitting dispute:', err);
+      return res.status(500).json({ message: 'Failed to submit dispute', details: err.message });
+    }
+
+    if (result.affectedRows === 0) {
+      console.log(`No bill found with ID: ${bill_id}`);
+      return res.status(404).json({ error: 'Bill not found' });
+    }
+
+    console.log(`Dispute submitted for bill with ID: ${bill_id}`);
+    res.status(200).json({ message: 'Dispute submitted successfully' });
+  });
+});
+
+
 // Orders endpoint
 app.get('/api/orders', (req, res) => {
   console.log('Fetching orders...');
