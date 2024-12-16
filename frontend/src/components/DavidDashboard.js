@@ -545,22 +545,23 @@ const fetchBigClients = async () => {
               />
             </div>
             <div className="modal-body">
-              {bigClients.length > 0 ? (
-                <div>
-                  <h6>Clients with Most Completed Orders:</h6>
-                  <ul className="list-group">
-                    {/* Display only the top 3 clients */}
-                    {bigClients.slice(0, 3).map((client, index) => (
-                      <li key={index} className="list-group-item">
-                        {client.first_name} {client.last_name} - {client.total_orders} orders
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              ) : (
-                <p>No completed orders found.</p>
-              )}
-            </div>
+            {bigClients.length > 0 ? (
+              <div>
+                <h6>Clients with Most Completed Orders:</h6>
+                <ul className="list-group">
+                  {/* Check if there is a tie */}
+                  {bigClients.map((client, index) => (
+                    <li key={index} className="list-group-item">
+                      {client.first_name} {client.last_name} - {client.total_orders} orders
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : (
+              <p>No completed orders found.</p>
+            )}
+          </div>
+
 
             <div className="modal-footer">
               <button

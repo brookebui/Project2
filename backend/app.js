@@ -1038,7 +1038,6 @@ app.post('/api/bills/create', async (req, res) => {
   }
 });
 
-// Big clients
 app.get('/api/clients/top', (req, res) => {
   const sql = `
     SELECT 
@@ -1047,8 +1046,8 @@ app.get('/api/clients/top', (req, res) => {
       last_name,
       total_orders
     FROM Clients
-    ORDER BY total_orders DESC
-    LIMIT 3;
+    WHERE total_orders = (SELECT MAX(total_orders) FROM Clients)
+    ORDER BY first_name, last_name;  
   `;
 
   console.log('Executing top clients query:', sql);
@@ -1064,7 +1063,6 @@ app.get('/api/clients/top', (req, res) => {
 
     console.log('Top clients data:', data);
     
-    // Handle case where no orders exist
     if (data.length === 0) {
       console.log('No top clients found.');
       return res.json([{
@@ -1075,7 +1073,6 @@ app.get('/api/clients/top', (req, res) => {
       }]);
     }
 
-    // Format the response
     const formattedData = data.map(client => ({
       client_id: client.client_id,
       first_name: client.first_name,
