@@ -83,10 +83,19 @@ function DavidDashboard() {
 
       try {
         const requestsRes = await axios.get('http://localhost:5050/api/requests');
-        console.log('Requests response:', requestsRes.data);
-        setRequests(requestsRes.data || []);
+        console.log('Raw requests response:', requestsRes);
+        console.log('Requests data:', requestsRes.data);
+        console.log('Number of requests:', requestsRes.data.length);
+        
+        if (!Array.isArray(requestsRes.data)) {
+          console.error('Requests data is not an array:', requestsRes.data);
+          setRequests([]);
+        } else {
+          setRequests(requestsRes.data);
+        }
       } catch (error) {
         console.error('Error fetching requests:', error.response?.data || error.message);
+        console.error('Full error:', error);
         setRequests([]);
       }
 
@@ -132,55 +141,55 @@ function DavidDashboard() {
     }
   };
 
-  const handleQuoteResponse = async (e) => {
-    e.preventDefault();
-    if (!selectedQuote) return;
-
+  const handleQuoteAction = async (request, action) => {
     try {
-      await axios.post(`http://localhost:5050/api/quotes/${selectedQuote.quote_id}/respond`, quoteResponse);
-      setSelectedQuote(null);
-      setQuoteResponse({
-        status: '',
-        note: '',
-        counter_price: '',
-        work_start: '',
-        work_end: 0
-      });
-      fetchQuotes();
+      if (!request || !request.request_id) {
+        alert('Invalid request data');
+        return;
+      }
+
+      let response;
+      if (action === 'create') {
+        const today = new Date();
+        const tomorrow = new Date(today);
+        tomorrow.setDate(tomorrow.getDate() + 1);
+
+        const formattedData = {
+          counter_price: parseFloat(request.proposed_price),
+          work_start: today.toISOString().slice(0, 19).replace('T', ' '),
+          work_end: tomorrow.toISOString().slice(0, 19).replace('T', ' '),
+          note: 'Quote created from request'
+        };
+
+        console.log('Sending quote creation data:', formattedData);
+
+        response = await axios.post(
+          `http://localhost:5050/api/requests/${request.request_id}/quote`,
+          formattedData
+        );
+      } else if (action === 'reject') {
+        response = await axios.post(
+          `http://localhost:5050/api/requests/${request.request_id}/respond`,
+          {
+            status: 'rejected',
+            note: 'Request rejected by David Smith'
+          }
+        );
+      }
+
+      if (response?.data?.success) {
+        alert(`Request ${action === 'create' ? 'converted to quote' : 'rejected'} successfully!`);
+        fetchData(); // Refresh all data
+      } else {
+        alert(`Error: ${response?.data?.error || 'Unknown error occurred'}`);
+      }
     } catch (error) {
-      console.error('Error responding to quote:', error);
-    }
-  };
-
-  const handleReject = (quote) => {
-    setSelectedQuote(quote);
-    setQuoteResponse({
-      status: 'rejected',
-      note: '',
-      counter_price: '',
-      work_start: '',
-      work_end: 0
-    });
-  };
-
-  const handleCounter = (quote) => {
-    setSelectedQuote(quote);
-    setQuoteResponse({
-      status: 'countered',
-      note: '',
-      counter_price: '',
-      work_start: '',
-      work_end: 0
-    });
-  };
-
-  const handleCreateQuote = async (request) => {
-    try {
-      await axios.post(`http://localhost:5050/api/requests/${request.request_id}/quote`);
-      fetchData(); // Refresh all data
-    } catch (error) {
-      console.error('Error creating quote:', error);
-      alert('Error creating quote');
+      console.error(`Error ${action}ing request:`, error);
+      const errorMessage = error.response?.data?.details || 
+                          error.response?.data?.error || 
+                          error.message || 
+                          'Unknown error occurred';
+      alert(`Error ${action}ing request: ${errorMessage}`);
     }
   };
 
@@ -318,6 +327,101 @@ function DavidDashboard() {
     }
   };
 
+  const renderRequestsTable = () => (
+    <table className="table">
+      <thead>
+        <tr>
+          <th>Request ID</th>
+          <th>Client ID</th>
+          <th>Date</th>
+          <th>Property Address</th>
+          <th>Square Feet</th>
+          <th>Proposed Price</th>
+          <th>Note</th>
+          <th>Status</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {requests.map((request) => (
+          <tr key={request.request_id}>
+            <td>{request.request_id}</td>
+            <td>{request.client_id}</td>
+            <td>{new Date(request.created_at).toLocaleDateString()}</td>
+            <td>{request.property_address}</td>
+            <td>{request.square_feet}</td>
+            <td>${request.proposed_price}</td>
+            <td>{request.note}</td>
+            <td>
+              <span className={`badge bg-${getStatusBadgeColor(request.status)}`}>
+                {request.status}
+              </span>
+            </td>
+            <td className="text-nowrap">
+              {request.status === 'pending' ? (
+                <div className="btn-group">
+                  <button
+                    className="btn btn-primary btn-sm"
+                    onClick={() => handleQuoteAction(request, 'create')}
+                  >
+                    Create Quote
+                  </button>
+                  <button
+                    className="btn btn-danger btn-sm ms-1"
+                    onClick={() => handleQuoteAction(request, 'reject')}
+                  >
+                    Reject
+                  </button>
+                </div>
+              ) : (
+                <span className="text-muted">
+                  {request.status === 'accepted' ? 'Quote created' : 'No actions available'}
+                </span>
+              )}
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+
+  const handleCreateBill = async (order) => {
+    if (!window.confirm('Are you sure you want to create a bill for this order?')) {
+      return;
+    }
+
+    try {
+      console.log('Creating bill for order:', order);
+
+      if (!order.order_id || !order.final_price) {
+        alert('Invalid order data');
+        return;
+      }
+
+      const response = await axios.post('http://localhost:5050/api/bills/create', {
+        order_id: parseInt(order.order_id),
+        amount_due: parseFloat(order.final_price)
+      });
+
+      console.log('Bill creation response:', response.data);
+
+      if (response.data.success) {
+        alert('Bill created successfully!');
+        fetchData(); // Refresh all data
+      } else {
+        alert('Failed to create bill: ' + (response.data.error || 'Unknown error'));
+      }
+    } catch (error) {
+      console.error('Error creating bill:', error);
+      const errorMessage = error.response?.data?.details || 
+                          error.response?.data?.sqlMessage ||
+                          error.response?.data?.error || 
+                          error.message || 
+                          'Unknown error occurred';
+      alert('Error creating bill: ' + errorMessage);
+    }
+  };
+
   return (
     <div className="container mt-4">
       <h2>Dashboard</h2>
@@ -431,61 +535,7 @@ function DavidDashboard() {
           {requests.length === 0 ? (
             <div className="alert alert-info">No requests found</div>
           ) : (
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>Request ID</th>
-                  <th>Client ID</th>
-                  <th>Date</th>
-                  <th>Property Address</th>
-                  <th>Square Feet</th>
-                  <th>Proposed Price</th>
-                  <th>Note</th>
-                  <th>Status</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {requests.map((request) => (
-                  <tr key={request.request_id}>
-                    <td>{request.request_id}</td>
-                    <td>{request.client_id}</td>
-                    <td>{new Date(request.created_at).toLocaleDateString()}</td>
-                    <td>{request.property_address}</td>
-                    <td>{request.square_feet}</td>
-                    <td>${request.proposed_price}</td>
-                    <td>{request.note}</td>
-                    <td>
-                      <span className={`badge bg-${getStatusBadgeColor(request.status)}`}>
-                        {request.status}
-                      </span>
-                    </td>
-                    <td className="text-nowrap">
-                      {console.log('Request status:', request.status)}
-                      {request.status === 'pending' && (
-                        <div className="btn-group">
-                          <button
-                            className="btn btn-primary btn-sm"
-                            onClick={() => handleRequestAccept(request)}
-                          >
-                            Create Quote
-                          </button>
-                          <button
-                            className="btn btn-danger btn-sm ms-1"
-                            onClick={() => handleRequestReject(request)}
-                          >
-                            Reject
-                          </button>
-                        </div>
-                      )}
-                      {request.status !== 'pending' && (
-                        <span className="text-muted">No actions available</span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            renderRequestsTable()
           )}
         </div>
       )}
@@ -505,6 +555,7 @@ function DavidDashboard() {
                   <th>Work End</th>
                   <th>Final Price</th>
                   <th>Status</th>
+                  <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -516,6 +567,19 @@ function DavidDashboard() {
                     <td>{new Date(order.work_end).toLocaleDateString()}</td>
                     <td>${order.final_price}</td>
                     <td>{order.status}</td>
+                    <td>
+                      {order.status !== 'billed' && (
+                        <button
+                          className="btn btn-primary btn-sm"
+                          onClick={() => handleCreateBill(order)}
+                        >
+                          Process
+                        </button>
+                      )}
+                      {order.status === 'billed' && (
+                        <span className="text-muted">Billed</span>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>
