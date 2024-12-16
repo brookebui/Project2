@@ -436,6 +436,53 @@ const handleDisputeSubmit = (e) => {
     </table>
   );
 
+  const renderBillsTable = () => (
+    <table className="table mt-4">
+      <thead>
+        <tr>
+          <th>Bill ID</th>
+          <th>Order ID</th>
+          <th>Amount Due</th>
+          <th>Status</th>
+          <th>Created At</th>
+          <th>Actions</th> {/* New Actions column */}
+        </tr>
+      </thead>
+      <tbody>
+        {bills.length > 0 ? (
+          bills.map((bill) => (
+            <tr key={bill.bill_id}>
+              <td>{bill.bill_id}</td>
+              <td>{bill.order_id}</td>
+              <td>${bill.amount_due ? bill.amount_due.toFixed(2) : 'N/A'}</td>
+              <td>{bill.status}</td>
+              <td>{new Date(bill.created_at).toLocaleDateString()}</td>
+              <td>
+                <button
+                  className="btn btn-success"
+                  onClick={() => handlePay(bill.bill_id)}
+                >
+                  Pay Immediately
+                </button>
+                <button
+                  className="btn btn-warning ml-2"
+                  onClick={() => handleDispute(bill.bill_id)}
+                >
+                  Dispute
+                </button>
+              </td>
+            </tr>
+          ))
+        ) : (
+          <tr>
+            <td colSpan="6">No bills available</td>
+          </tr>
+        )}
+      </tbody>
+    </table>
+  );
+
+
   return (
     <div className="container mt-4">
       <h2>Client Dashboard</h2>
@@ -448,14 +495,14 @@ const handleDisputeSubmit = (e) => {
             Quotes
           </button>
         </li>
-        <li className="nav-item">
+        {/* <li className="nav-item">
           <button 
             className={`nav-link ${activeTab === 'orders' ? 'active' : ''}`}
             onClick={() => setActiveTab('orders')}
           >
             Orders
           </button>
-        </li>
+        </li> */}
         <li className="nav-item">
           <button 
             className={`nav-link ${activeTab === 'bills' ? 'active' : ''}`}
@@ -465,7 +512,6 @@ const handleDisputeSubmit = (e) => {
           </button>
         </li>
       </ul>
-
       {activeTab === 'quotes' && (
         <div>
           <h3>Quote Request</h3>
@@ -475,10 +521,12 @@ const handleDisputeSubmit = (e) => {
         </div>
       )}
 
-      {activeTab === 'orders' && (
+
+
+      {activeTab === 'bills' && (
         <div>
-          <h3>Your Orders</h3>
-          {/* Add orders table here */}
+          <h3>Your Bills</h3>
+          {renderBillsTable()}
 
           {isDisputing && (
             <div className="dispute-form">
@@ -500,7 +548,7 @@ const handleDisputeSubmit = (e) => {
                 <button
                   type="button"
                   className="btn btn-secondary ml-2"
-                  onClick={() => setIsDisputing(false)} // Close the dispute form
+                  onClick={() => setIsDisputing(false)} 
                 >
                   Cancel
                 </button>

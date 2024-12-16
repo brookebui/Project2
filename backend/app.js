@@ -14,7 +14,7 @@ const db = mysql.createConnection({
     host: 'localhost',
     user: 'root',
     password: '',
-    database: 'project 2',
+    database: 'driveway_mgmt',
     port: 3306
 });
 
