@@ -726,7 +726,7 @@ const fetchBigClients = async () => {
                   <ul className="list-group">
                     {largestDriveways.map((driveway, index) => (
                       <li key={index} className="list-group-item">
-                        {driveway.first_name} {driveway.last_name} - {driveway.square_feet} square feet
+                        {driveway.property_address} - {driveway.square_feet} square feet
                       </li>
                     ))}
                   </ul>
