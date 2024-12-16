@@ -1038,32 +1038,17 @@ app.post('/api/bills/create', async (req, res) => {
   }
 });
 
-// Move this endpoint BEFORE app.listen()
+// Big clients
 app.get('/api/clients/top', (req, res) => {
   const sql = `
     SELECT 
-      c.client_id,
-      c.first_name,
-      c.last_name,
-      COUNT(DISTINCT o.order_id) as total_orders
-    FROM clients c
-    LEFT JOIN requests r ON c.client_id = r.client_id
-    LEFT JOIN quotes q ON r.request_id = q.request_id
-    LEFT JOIN orders o ON q.quote_id = o.quote_id
-    WHERE o.order_id IS NOT NULL
-    GROUP BY c.client_id, c.first_name, c.last_name
-    HAVING COUNT(DISTINCT o.order_id) = (
-      SELECT COUNT(DISTINCT o2.order_id)
-      FROM clients c2
-      LEFT JOIN requests r2 ON c2.client_id = r2.client_id
-      LEFT JOIN quotes q2 ON r2.request_id = q2.request_id
-      LEFT JOIN orders o2 ON q2.quote_id = o2.quote_id
-      WHERE o2.order_id IS NOT NULL
-      GROUP BY c2.client_id
-      ORDER BY COUNT(DISTINCT o2.order_id) DESC
-      LIMIT 1
-    )
-    ORDER BY total_orders DESC, c.first_name, c.last_name
+      client_id,
+      first_name,
+      last_name,
+      total_orders
+    FROM Clients
+    ORDER BY total_orders DESC
+    LIMIT 3;
   `;
 
   console.log('Executing top clients query:', sql);
@@ -1081,6 +1066,7 @@ app.get('/api/clients/top', (req, res) => {
     
     // Handle case where no orders exist
     if (data.length === 0) {
+      console.log('No top clients found.');
       return res.json([{
         client_id: 'N/A',
         first_name: 'No',
@@ -1100,6 +1086,7 @@ app.get('/api/clients/top', (req, res) => {
     res.json(formattedData);
   });
 });
+
 
 // Add endpoint for difficult clients (3 requests, no follow-up)
 app.get('/api/clients/difficult', (req, res) => {

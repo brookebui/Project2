@@ -438,17 +438,21 @@ function DavidDashboard() {
     }
   };
 
-  const fetchBigClients = async () => {
-    try {
-      const response = await axios.get('http://localhost:5050/api/clients/top');
-      console.log('Big clients response:', response.data);
-      setBigClients(response.data);
-      setShowBigClients(true);
-    } catch (error) {
-      console.error('Error fetching big clients:', error);
-      alert('Error fetching big clients: ' + (error.response?.data?.error || error.message));
+// Function to fetch top clients
+const fetchBigClients = async () => {
+  try {
+    const response = await fetch('http://localhost:5050/api/clients/top'); // Adjust the API endpoint as needed
+    if (!response.ok) {
+      throw new Error('Failed to fetch top clients');
     }
-  };
+    const data = await response.json();
+    setBigClients(data);
+    setShowBigClients(true); // Show the modal after fetching data
+  } catch (error) {
+    console.error('Error fetching top clients:', error);
+    setBigClients([]); // Handle errors gracefully
+  }
+};
 
   const fetchDifficultClients = async () => {
     try {
@@ -545,9 +549,10 @@ function DavidDashboard() {
                 <div>
                   <h6>Clients with Most Completed Orders:</h6>
                   <ul className="list-group">
-                    {bigClients.map((client, index) => (
+                    {/* Display only the top 3 clients */}
+                    {bigClients.slice(0, 3).map((client, index) => (
                       <li key={index} className="list-group-item">
-                        {client.first_name} {client.last_name} - {client.completed_orders} orders
+                        {client.first_name} {client.last_name} - {client.total_orders} orders
                       </li>
                     ))}
                   </ul>
@@ -556,6 +561,7 @@ function DavidDashboard() {
                 <p>No completed orders found.</p>
               )}
             </div>
+
             <div className="modal-footer">
               <button
                 type="button"
