@@ -20,6 +20,17 @@ function ClientDashboard() {
     preferred_end: '',
     note: ''
   });
+  const [showNegotiateModal, setShowNegotiateModal] = useState(false);
+  const [negotiateQuote, setNegotiateQuote] = useState(null);
+  const [negotiateForm, setNegotiateForm] = useState({
+    proposed_price: '',
+    preferred_start: '',
+    preferred_end: '',
+    note: ''
+  });
+  const [showDisputeModal, setShowDisputeModal] = useState(false);
+  const [disputeBill, setDisputeBill] = useState(null);
+  const [disputeNote, setDisputeNote] = useState('');
 
   const fetchQuotes = async () => {
     try {
@@ -152,31 +163,33 @@ function ClientDashboard() {
   };
 
   const handleNegotiateQuote = (quote) => {
-    setSelectedQuote(quote);
-    setNegotiationForm({
+    setNegotiateQuote(quote);
+    setNegotiateForm({
       proposed_price: quote.counter_price,
-      preferred_start: quote.work_start ? new Date(quote.work_start).toISOString().slice(0, 16) : '',
-      preferred_end: quote.work_end ? new Date(quote.work_end).toISOString().slice(0, 16) : '',
+      preferred_start: '',
+      preferred_end: '',
       note: ''
     });
+    setShowNegotiateModal(true);
   };
 
-  const handleNegotiationSubmit = async (e) => {
+  const handleNegotiateSubmit = async (e) => {
     e.preventDefault();
-    if (!selectedQuote) return;
-
     try {
-      const response = await axios.post(`http://localhost:5050/api/quotes/${selectedQuote.quote_id}/negotiate`, {
-        proposed_price: parseFloat(negotiationForm.proposed_price),
-        preferred_start: negotiationForm.preferred_start,
-        preferred_end: negotiationForm.preferred_end,
-        note: negotiationForm.note
-      });
+      const response = await axios.post(
+        `http://localhost:5050/api/quotes/${negotiateQuote.quote_id}/negotiate`,
+        {
+          proposed_price: parseFloat(negotiateForm.proposed_price),
+          preferred_start: `${negotiateForm.preferred_start} 00:00:00`,
+          preferred_end: `${negotiateForm.preferred_end} 23:59:59`,
+          note: negotiateForm.note
+        }
+      );
 
       if (response.data.success) {
         alert('Negotiation submitted successfully!');
-        setSelectedQuote(null);
-        fetchQuotes();
+        setShowNegotiateModal(false);
+        fetchQuotes(); // Refresh quotes list
       } else {
         alert('Failed to submit negotiation: ' + (response.data.error || 'Unknown error'));
       }
@@ -212,95 +225,56 @@ function ClientDashboard() {
     }
   };
 
-  const [isPaying, setIsPaying] = useState(false);
-  const handlePay = (billId) => {
-    const isConfirmed = window.confirm("Are you sure you want to pay this bill?");
-    
-    if (isConfirmed) {
-      setIsPaying(true); 
-      axios
-        .delete(`http://localhost:5050/api/bills/${billId}`)
-        .then((response) => {
-          console.log(response.data);
-          setBills((prevBills) => prevBills.filter((bill) => bill.bill_id !== billId));
-          alert("Bill deleted successfully.");
-        })
-        .catch((error) => {
-          console.error("Error deleting bill:", error);
-          if (error.response) {
-            alert(`Error: ${error.response.data.message}`);
-          } else if (error.request) {
+  const handlePay = async (billId) => {
+    if (!window.confirm('Are you sure you want to pay this bill?')) {
+      return;
+    }
 
-            alert("Network error. Please check your connection.");
-          } else {
-
-            alert("There was an issue removing the bill. Please try again.");
-          }
-        })
-        .finally(() => {
-          setIsPaying(false); 
-        });
+    try {
+      const response = await axios.post(`http://localhost:5050/api/bills/${billId}/pay`);
+      
+      if (response.data.success) {
+        alert('Bill paid successfully!');
+        fetchBills(); // Refresh the bills list
+      } else {
+        alert('Failed to process payment: ' + (response.data.error || 'Unknown error'));
+      }
+    } catch (error) {
+      console.error('Error paying bill:', error);
+      alert('Error paying bill: ' + (error.response?.data?.error || error.message));
     }
   };
 
-const [disputeNote, setDisputeNote] = useState('');
-const [isDisputing, setIsDisputing] = useState(false);
-const [currentBillId, setCurrentBillId] = useState(null);
-
-// Handle Dispute 
-const handleDispute = (billId) => {
-  console.log(`Disputing bill ID: ${billId}`);
-  setCurrentBillId(billId); 
-  setIsDisputing(true); 
-};
-
-const [isLoading, setIsLoading] = useState(false);
-
-const handleDisputeSubmit = (e) => {
-  e.preventDefault();
-
-  if (!currentBillId || !disputeNote) {
-    alert('Please provide a valid bill ID and note for the dispute.');
-    return;
-  }
-
-  const isConfirmed = window.confirm("Are you sure you want to submit this dispute?");
-  
-  if (!isConfirmed) {
-    return;  
-  }
-
-  const disputeData = {
-    bill_id: currentBillId,  
-    note: disputeNote,      
+  // Handle Dispute Action
+  const handleDispute = (bill) => {
+    setDisputeBill(bill);
+    setDisputeNote('');
+    setShowDisputeModal(true);
   };
 
-  setIsLoading(true); 
+  const handleDisputeSubmit = async (e) => {
+    e.preventDefault();
+    try {
+      const response = await axios.post(
+        `http://localhost:5050/api/submit-dispute`,
+        {
+          bill_id: disputeBill.bill_id,
+          note: disputeNote
+        }
+      );
 
-  axios
-    .post('http://localhost:5050/api/submit-dispute', disputeData, {
-      headers: {
-        'Content-Type': 'application/json',
-      },
-    })
-    .then((response) => {
-      console.log(response.data);
-      if (response.status === 200 && response.data.message === 'Dispute submitted successfully') {
-        alert('Dispute submitted successfully.');
-        setIsDisputing(false);  
-        setDisputeNote('');   
+      if (response.data.message === 'Dispute submitted successfully') {
+        alert('Dispute submitted successfully!');
+        setShowDisputeModal(false);
+        fetchBills(); // Refresh bills list
       } else {
-        alert('Failed to submit dispute.');
+        alert('Failed to submit dispute: ' + (response.data.error || 'Unknown error'));
       }
-    })
-    .catch((error) => {
-      console.error('Error submitting dispute:', error.response ? error.response.data : error);
-      alert('An error occurred while submitting the dispute. Please try again.');
-    })
-    .finally(() => {
-      setIsLoading(false);  
-    });
-};
+    } catch (error) {
+      console.error('Error submitting dispute:', error);
+      alert('Error submitting dispute: ' + (error.response?.data?.error || error.message));
+    }
+  };
 
   const renderQuoteRequestForm = () => (
     <div className="container mt-4">
@@ -375,7 +349,7 @@ const handleDisputeSubmit = (e) => {
   );
 
   const renderQuotesTable = () => (
-    <table className="table mt-4">
+    <table className="table">
       <thead>
         <tr>
           <th>Quote ID</th>
@@ -392,13 +366,13 @@ const handleDisputeSubmit = (e) => {
           quotes.map((quote) => (
             <tr key={quote.quote_id}>
               <td>{quote.quote_id}</td>
-              <td>${quote.counter_price.toFixed(2)}</td>
+              <td>${quote.counter_price}</td>
               <td>{quote.work_start ? new Date(quote.work_start).toLocaleString() : 'N/A'}</td>
               <td>{quote.work_end ? new Date(quote.work_end).toLocaleString() : 'N/A'}</td>
               <td>{quote.status}</td>
               <td>{quote.note || 'No note'}</td>
               <td>
-                {quote.status === 'pending' ? (
+                {quote.status === 'pending' || quote.status === 'revised' ? (
                   <div className="btn-group">
                     <button
                       className="btn btn-success btn-sm"
@@ -436,52 +410,138 @@ const handleDisputeSubmit = (e) => {
     </table>
   );
 
-  const renderBillsTable = () => (
-    <table className="table mt-4">
-      <thead>
-        <tr>
-          <th>Bill ID</th>
-          <th>Order ID</th>
-          <th>Amount Due</th>
-          <th>Status</th>
-          <th>Created At</th>
-          <th>Actions</th> {/* New Actions column */}
-        </tr>
-      </thead>
-      <tbody>
-        {bills.length > 0 ? (
-          bills.map((bill) => (
-            <tr key={bill.bill_id}>
-              <td>{bill.bill_id}</td>
-              <td>{bill.order_id}</td>
-              <td>${bill.amount_due ? bill.amount_due.toFixed(2) : 'N/A'}</td>
-              <td>{bill.status}</td>
-              <td>{new Date(bill.created_at).toLocaleDateString()}</td>
-              <td>
+  const renderNegotiateModal = () => (
+    showNegotiateModal && (
+      <div className="modal show d-block" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
+        <div className="modal-dialog">
+          <div className="modal-content">
+            <div className="modal-header">
+              <h5 className="modal-title">Negotiate Quote</h5>
+              <button
+                type="button"
+                className="btn-close"
+                onClick={() => setShowNegotiateModal(false)}
+              />
+            </div>
+            <form onSubmit={handleNegotiateSubmit}>
+              <div className="modal-body">
+                <div className="mb-3">
+                  <label className="form-label">Preferred Price ($)</label>
+                  <input
+                    type="number"
+                    className="form-control"
+                    value={negotiateForm.proposed_price}
+                    onChange={(e) => setNegotiateForm({
+                      ...negotiateForm,
+                      proposed_price: e.target.value
+                    })}
+                    required
+                  />
+                </div>
+                <div className="mb-3">
+                  <label className="form-label">Preferred Start Date</label>
+                  <input
+                    type="date"
+                    className="form-control"
+                    value={negotiateForm.preferred_start}
+                    onChange={(e) => setNegotiateForm({
+                      ...negotiateForm,
+                      preferred_start: e.target.value
+                    })}
+                    required
+                  />
+                </div>
+                <div className="mb-3">
+                  <label className="form-label">Preferred End Date</label>
+                  <input
+                    type="date"
+                    className="form-control"
+                    value={negotiateForm.preferred_end}
+                    onChange={(e) => setNegotiateForm({
+                      ...negotiateForm,
+                      preferred_end: e.target.value
+                    })}
+                    required
+                  />
+                </div>
+                <div className="mb-3">
+                  <label className="form-label">Additional Notes</label>
+                  <textarea
+                    className="form-control"
+                    rows="3"
+                    value={negotiateForm.note}
+                    onChange={(e) => setNegotiateForm({
+                      ...negotiateForm,
+                      note: e.target.value
+                    })}
+                    required
+                  />
+                </div>
+              </div>
+              <div className="modal-footer">
                 <button
-                  className="btn btn-success"
-                  onClick={() => handlePay(bill.bill_id)}
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => setShowNegotiateModal(false)}
                 >
-                  Pay Immediately
+                  Cancel
                 </button>
-                <button
-                  className="btn btn-warning ml-2"
-                  onClick={() => handleDispute(bill.bill_id)}
-                >
-                  Dispute
+                <button type="submit" className="btn btn-primary">
+                  Submit Negotiation
                 </button>
-              </td>
-            </tr>
-          ))
-        ) : (
-          <tr>
-            <td colSpan="6">No bills available</td>
-          </tr>
-        )}
-      </tbody>
-    </table>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+    )
   );
 
+  const renderDisputeModal = () => (
+    showDisputeModal && (
+      <div className="modal show d-block" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
+        <div className="modal-dialog">
+          <div className="modal-content">
+            <div className="modal-header">
+              <h5 className="modal-title">Dispute Bill</h5>
+              <button
+                type="button"
+                className="btn-close"
+                onClick={() => setShowDisputeModal(false)}
+              />
+            </div>
+            <form onSubmit={handleDisputeSubmit}>
+              <div className="modal-body">
+                <div className="mb-3">
+                  <label className="form-label">Dispute Reason</label>
+                  <textarea
+                    className="form-control"
+                    rows="4"
+                    value={disputeNote}
+                    onChange={(e) => setDisputeNote(e.target.value)}
+                    required
+                    placeholder="Please explain why you are disputing this bill"
+                  />
+                </div>
+              </div>
+              <div className="modal-footer">
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => setShowDisputeModal(false)}
+                >
+                  Cancel
+                </button>
+                <button type="submit" className="btn btn-primary">
+                  Submit Dispute
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+    )
+  );
 
   return (
     <div className="container mt-4">
@@ -495,14 +555,6 @@ const handleDisputeSubmit = (e) => {
             Quotes
           </button>
         </li>
-        {/* <li className="nav-item">
-          <button 
-            className={`nav-link ${activeTab === 'orders' ? 'active' : ''}`}
-            onClick={() => setActiveTab('orders')}
-          >
-            Orders
-          </button>
-        </li> */}
         <li className="nav-item">
           <button 
             className={`nav-link ${activeTab === 'bills' ? 'active' : ''}`}
@@ -512,6 +564,7 @@ const handleDisputeSubmit = (e) => {
           </button>
         </li>
       </ul>
+
       {activeTab === 'quotes' && (
         <div>
           <h3>Quote Request</h3>
@@ -521,43 +574,65 @@ const handleDisputeSubmit = (e) => {
         </div>
       )}
 
-
-
       {activeTab === 'bills' && (
         <div>
           <h3>Your Bills</h3>
-          {renderBillsTable()}
-
-          {isDisputing && (
-            <div className="dispute-form">
-              <h4>Dispute Bill</h4>
-              <form onSubmit={handleDisputeSubmit}>
-                <div className="form-group">
-                  <label htmlFor="disputeNote">Dispute Note</label>
-                  <textarea
-                    id="disputeNote"
-                    className="form-control"
-                    value={disputeNote}
-                    onChange={(e) => setDisputeNote(e.target.value)}
-                    required
-                  />
-                </div>
-                <button type="submit" className="btn btn-danger">
-                  Submit Dispute
-                </button>
-                <button
-                  type="button"
-                  className="btn btn-secondary ml-2"
-                  onClick={() => setIsDisputing(false)} 
-                >
-                  Cancel
-                </button>
-              </form>
-            </div>
+          {bills.length === 0 ? (
+            <div className="alert alert-info">No bills found</div>
+          ) : (
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Bill ID</th>
+                  <th>Order ID</th>
+                  <th>Date</th>
+                  <th>Amount Due</th>
+                  <th>Status</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {bills.map((bill) => (
+                  <tr key={bill.bill_id}>
+                    <td>{bill.bill_id}</td>
+                    <td>{bill.order_id}</td>
+                    <td>{new Date(bill.created_at).toLocaleDateString()}</td>
+                    <td>${bill.amount_due}</td>
+                    <td>
+                      <span className={`badge bg-${bill.status === 'paid' ? 'success' : 'warning'}`}>
+                        {bill.status}
+                      </span>
+                    </td>
+                    <td>
+                      {bill.status === 'pending' && (
+                        <div className="btn-group">
+                          <button
+                            className="btn btn-success btn-sm"
+                            onClick={() => handlePay(bill.bill_id)}
+                          >
+                            Pay Bill
+                          </button>
+                          <button
+                            className="btn btn-warning btn-sm ms-1"
+                            onClick={() => handleDispute(bill)}
+                          >
+                            Dispute
+                          </button>
+                        </div>
+                      )}
+                      {bill.status === 'paid' && (
+                        <span className="text-success">Paid</span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           )}
-  
         </div>
       )}
+      {renderNegotiateModal()}
+      {renderDisputeModal()}
     </div>
   );
 }

@@ -10,11 +10,16 @@ dotenv.config();
 
 const app = express();
 
+app.use((req, res, next) => {
+  console.log(`${req.method} ${req.url}`);
+  next();
+});
+
 const db = mysql.createConnection({
     host: 'localhost',
     user: 'root',
     password: '',
-    database: 'driveway_mgmt',
+    database: 'project 2',
     port: 3306
 });
 
@@ -39,6 +44,79 @@ db.connect((err) => {
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
+
+// Add the revenue report endpoint here, before other routes
+app.get('/api/revenue-report', (req, res) => {
+  const { startDate, endDate } = req.query;
+  
+  console.log('Received date range:', { startDate, endDate });
+
+  if (!startDate || !endDate) {
+    return res.status(400).json({
+      error: 'Start date and end date are required'
+    });
+  }
+
+  const sql = `
+    SELECT 
+      DATE(b.created_at) as date,
+      COUNT(b.bill_id) as total_bills,
+      COALESCE(SUM(b.amount_due), 0) as total_revenue,
+      COUNT(CASE WHEN b.status = 'paid' THEN 1 END) as paid_bills,
+      COALESCE(SUM(CASE WHEN b.status = 'paid' THEN b.amount_due ELSE 0 END), 0) as collected_revenue,
+      COUNT(CASE WHEN b.status = 'pending' THEN 1 END) as pending_bills,
+      COALESCE(SUM(CASE WHEN b.status = 'pending' THEN b.amount_due ELSE 0 END), 0) as pending_revenue
+    FROM bills b
+    WHERE b.created_at BETWEEN ? AND ?
+    GROUP BY DATE(b.created_at)
+    ORDER BY date ASC
+  `;
+
+  console.log('Executing query with dates:', { startDate, endDate });
+
+  db.query(sql, [startDate, endDate], (err, data) => {
+    if (err) {
+      console.error('Error generating revenue report:', err);
+      return res.status(500).json({ 
+        error: 'Error generating revenue report',
+        details: err.message 
+      });
+    }
+
+    console.log('Raw report data:', data);
+
+    // Initialize totals with zeros
+    const totals = {
+      total_bills: 0,
+      total_revenue: 0,
+      paid_bills: 0,
+      collected_revenue: 0,
+      pending_bills: 0,
+      pending_revenue: 0
+    };
+
+    // Calculate totals from data
+    data.forEach(day => {
+      totals.total_bills += day.total_bills || 0;
+      totals.total_revenue += day.total_revenue || 0;
+      totals.paid_bills += day.paid_bills || 0;
+      totals.collected_revenue += day.collected_revenue || 0;
+      totals.pending_bills += day.pending_bills || 0;
+      totals.pending_revenue += day.pending_revenue || 0;
+    });
+
+    console.log('Calculated totals:', totals);
+
+    res.json({
+      period: {
+        start: startDate,
+        end: endDate
+      },
+      daily_data: data,
+      totals
+    });
+  });
+});
 
 const generateClientID = () => {
     const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
@@ -179,6 +257,8 @@ app.post('/quotes/request', upload.array('photos', 5), (req, res) => {
             note
         ];
 
+        console.log('Inserting request with values:', values);
+
         db.query(sql, values, (err, result) => {
             if (err) {
                 console.error('Error inserting quote request:', err);
@@ -189,10 +269,14 @@ app.post('/quotes/request', upload.array('photos', 5), (req, res) => {
                 });
             }
 
+            // Return the newly created request_id
+            const newRequestId = result.insertId;
+            console.log('Created request with ID:', newRequestId);
+
             res.status(201).json({
                 success: true,
                 message: 'Quote request submitted successfully',
-                request_id: result.insertId
+                request_id: newRequestId
             });
         });
     });
@@ -259,7 +343,7 @@ app.get('/api/requests', (req, res) => {
   });
 });
 
-// Update the bills endpoint
+// Move this endpoint up, right after the GET endpoint
 app.get('/api/bills', (req, res) => {
   console.log('Bills endpoint hit');
   const sql = `
@@ -272,7 +356,6 @@ app.get('/api/bills', (req, res) => {
       o.quote_id
     FROM bills b
     LEFT JOIN orders o ON b.order_id = o.order_id
-    WHERE b.bill_id > 0
     ORDER BY b.created_at DESC
   `;
   
@@ -286,65 +369,172 @@ app.get('/api/bills', (req, res) => {
   });
 });
 
-// Delete bill endpoint
-app.delete('/api/bills/:billId', (req, res) => {
-  const billId = req.params.billId;
+// Add this right after the GET endpoint
+app.post('/api/bills/:id/respond-dispute', async (req, res) => {
+  const { id } = req.params;
+  const { new_amount, response_note } = req.body;
+  
+  console.log('Processing dispute response:', { id, new_amount, response_note });
 
-  console.log(`Received request to delete bill with ID: ${billId}`);
+  try {
+    // Start transaction
+    await new Promise((resolve, reject) => {
+      db.beginTransaction(err => {
+        if (err) {
+          console.error('Transaction start error:', err);
+          reject(err);
+        } else {
+          resolve();
+        }
+      });
+    });
 
-  // Validate billId
-  if (!billId || isNaN(billId)) {
-    console.log('Invalid bill ID received');
-    return res.status(400).json({ error: 'Invalid bill ID' });
+    try {
+      // Update bill with new amount and note, set status back to pending
+      await new Promise((resolve, reject) => {
+        const sql = `
+          UPDATE bills 
+          SET status = 'pending',
+              amount_due = ?,
+              note = CONCAT(IFNULL(note, ''), '\nAdmin Response: ', ?)
+          WHERE bill_id = ?
+        `;
+        
+        db.query(sql, [new_amount, response_note, id], (err, result) => {
+          if (err) {
+            console.error('Bill update error:', err);
+            reject(err);
+          } else {
+            resolve(result);
+          }
+        });
+      });
+
+      // Commit transaction
+      await new Promise((resolve, reject) => {
+        db.commit(err => {
+          if (err) {
+            console.error('Commit error:', err);
+            reject(err);
+          } else {
+            resolve();
+          }
+        });
+      });
+
+      console.log('Dispute response submitted successfully');
+      res.json({
+        success: true,
+        message: 'Dispute response submitted successfully'
+      });
+
+    } catch (error) {
+      // Rollback on error
+      await new Promise(resolve => db.rollback(() => resolve()));
+      throw error;
+    }
+
+  } catch (error) {
+    console.error('Error processing dispute response:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to process dispute response',
+      details: error.message
+    });
   }
-
-  const sql = 'DELETE FROM bills WHERE bill_id = ?';
-
-  db.query(sql, [billId], (err, result) => {
-    if (err) {
-      console.error('Error deleting bill:', err);
-      return res.status(500).json({ error: 'Error deleting bill', details: err.message });
-    }
-
-    console.log('Delete result:', result);
-    if (result.affectedRows === 0) {
-      console.log(`No bill found with ID: ${billId}`);
-      return res.status(404).json({ error: 'Bill not found' });
-    }
-
-    console.log(`Bill with ID ${billId} deleted successfully`);
-    res.status(200).json({ message: 'Bill deleted successfully' });
-  });
 });
 
-app.post('/api/submit-dispute', (req, res) => {
+app.post('/api/submit-dispute', async (req, res) => {
   const { bill_id, note } = req.body;
+
+  console.log('Received dispute request:', { bill_id, note });
 
   // Validate inputs
   if (!bill_id || !note) {
     return res.status(400).json({ error: 'Bill ID and note are required' });
   }
 
-  const sql = `
-    UPDATE bills
-    SET note = ?
-    WHERE bill_id = ?
-  `;
+  try {
+    // Start transaction
+    await new Promise((resolve, reject) => {
+      db.beginTransaction(err => {
+        if (err) {
+          console.error('Transaction start error:', err);
+          reject(err);
+        } else {
+          resolve();
+        }
+      });
+    });
 
-  db.query(sql, [note, bill_id], (err, result) => {
-    if (err) {
-      console.error('Error submitting dispute:', err);
-      return res.status(500).json({ message: 'Failed to submit dispute', details: err.message });
+    try {
+      // Update bill status and note
+      await new Promise((resolve, reject) => {
+        const sql = `
+          UPDATE bills 
+          SET status = 'disputed',
+              note = ?
+          WHERE bill_id = ?
+        `;
+
+        console.log('Executing SQL:', sql, [note, bill_id]);
+
+        db.query(sql, [note, bill_id], (err, result) => {
+          if (err) {
+            console.error('Update error:', err);
+            reject(err);
+          } else {
+            console.log('Update result:', result);
+            resolve(result);
+          }
+        });
+      });
+
+      // Verify the update
+      const [updatedBill] = await new Promise((resolve, reject) => {
+        db.query('SELECT * FROM bills WHERE bill_id = ?', [bill_id], (err, rows) => {
+          if (err) {
+            reject(err);
+          } else {
+            resolve(rows);
+          }
+        });
+      });
+
+      console.log('Updated bill:', updatedBill);
+
+      // Commit transaction
+      await new Promise((resolve, reject) => {
+        db.commit(err => {
+          if (err) {
+            console.error('Commit error:', err);
+            reject(err);
+          } else {
+            resolve();
+          }
+        });
+      });
+
+      res.json({ 
+        success: true,
+        message: 'Dispute submitted successfully',
+        bill: updatedBill
+      });
+
+    } catch (error) {
+      // Rollback on error
+      await new Promise(resolve => db.rollback(() => resolve()));
+      throw error;
     }
 
-    if (result.affectedRows === 0) {
-      console.log(`No bill found with ID: ${bill_id}`);
-      return res.status(404).json({ error: 'Bill not found' });
-    }
-
-    console.log(`Dispute submitted for bill with ID: ${bill_id}`);
-    res.status(200).json({ message: 'Dispute submitted successfully' });
-  });
+  } catch (error) {
+    console.error('Error in dispute submission:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to submit dispute',
+      details: error.message
+    });
+  }
 });
 
 
@@ -539,26 +729,39 @@ app.post('/api/quotes/:id/accept', async (req, res) => {
   }
 });
 
+// Add or update the negotiate endpoint
 app.post('/api/quotes/:id/negotiate', (req, res) => {
   const { id } = req.params;
-  const { note, proposed_price, preferred_start, preferred_end } = req.body;
+  const { proposed_price, preferred_start, preferred_end, note } = req.body;
   
+  console.log('Negotiating quote:', { id, proposed_price, preferred_start, preferred_end, note });
+
   const sql = `
     UPDATE quotes 
     SET status = 'negotiating',
-        note = ?,
         counter_price = ?,
         work_start = ?,
-        work_end = ?
+        work_end = ?,
+        note = ?
     WHERE quote_id = ?
   `;
 
-  db.query(sql, [note, proposed_price, preferred_start, preferred_end, id], (err, result) => {
+  const values = [proposed_price, preferred_start, preferred_end, note, id];
+  
+  db.query(sql, values, (err, result) => {
     if (err) {
       console.error('Error updating quote:', err);
-      return res.status(500).json({ error: 'Error updating quote' });
+      return res.status(500).json({ 
+        error: 'Error updating quote',
+        details: err.message 
+      });
     }
-    res.json({ success: true, message: 'Negotiation submitted successfully' });
+
+    console.log('Quote negotiation successful:', result);
+    res.json({ 
+      success: true, 
+      message: 'Negotiation submitted successfully' 
+    });
   });
 });
 
@@ -1348,6 +1551,84 @@ app.get('/api/clients/good', (req, res) => {
 
     res.json(formattedData);
   });
+});
+
+// Add this before app.listen()
+console.log('Registered routes:', app._router.stack
+  .filter(r => r.route)
+  .map(r => `${Object.keys(r.route.methods)[0].toUpperCase()} ${r.route.path}`));
+
+// Add bill payment endpoint
+app.post('/api/bills/:id/pay', async (req, res) => {
+  const { id } = req.params;
+  
+  console.log('Processing payment for bill:', id);
+
+  try {
+    // Start transaction
+    await new Promise((resolve, reject) => {
+      db.beginTransaction(err => {
+        if (err) {
+          console.error('Transaction start error:', err);
+          reject(err);
+        } else {
+          resolve();
+        }
+      });
+    });
+
+    try {
+      // Update bill status to paid
+      await new Promise((resolve, reject) => {
+        const sql = `
+          UPDATE bills 
+          SET status = 'paid',
+              paid_at = CURRENT_TIMESTAMP
+          WHERE bill_id = ?
+        `;
+        
+        db.query(sql, [id], (err, result) => {
+          if (err) {
+            console.error('Bill update error:', err);
+            reject(err);
+          } else {
+            resolve(result);
+          }
+        });
+      });
+
+      // Commit transaction
+      await new Promise((resolve, reject) => {
+        db.commit(err => {
+          if (err) {
+            console.error('Commit error:', err);
+            reject(err);
+          } else {
+            resolve();
+          }
+        });
+      });
+
+      console.log('Bill payment processed successfully');
+      res.json({
+        success: true,
+        message: 'Bill paid successfully'
+      });
+
+    } catch (error) {
+      // Rollback on error
+      await new Promise(resolve => db.rollback(() => resolve()));
+      throw error;
+    }
+
+  } catch (error) {
+    console.error('Error processing bill payment:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to process payment',
+      details: error.message
+    });
+  }
 });
 
 // This should be the last line in your file

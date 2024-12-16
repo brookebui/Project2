@@ -52,6 +52,20 @@ function DavidDashboard() {
   const [overdueBills, setOverdueBills] = useState([]);
   const [badClients, setBadClients] = useState([]);
   const [goodClients, setGoodClients] = useState([]);
+  const [showReviseModal, setShowReviseModal] = useState(false);
+  const [reviseQuote, setReviseQuote] = useState(null);
+  const [reviseForm, setReviseForm] = useState({
+    counter_price: '',
+    work_start: '',
+    work_end: '',
+    note: ''
+  });
+  const [showDisputeResponseModal, setShowDisputeResponseModal] = useState(false);
+  const [selectedBill, setSelectedBill] = useState(null);
+  const [disputeResponse, setDisputeResponse] = useState({
+    new_amount: '',
+    response_note: ''
+  });
 
   const handleBillAction = (bill) => {
     alert(`Processing bill ${bill.bill_id} for $${bill.amount_due}`);
@@ -70,7 +84,7 @@ function DavidDashboard() {
         console.log('Bills response:', billsRes.data);
         setBills(billsRes.data || []);
       } catch (error) {
-        console.error('Error fetching bills:', error.response?.data || error.message);
+        console.error('Error fetching bills:', error);
         setBills([]);
       }
 
@@ -138,13 +152,36 @@ function DavidDashboard() {
     }
   };
 
-  const generateReport = async (e) => {
-    e.preventDefault();
+  const handleGenerateReport = async () => {
+    if (!startDate || !endDate) {
+      alert('Please select both start and end dates');
+      return;
+    }
+
     try {
-      const res = await axios.post('/api/revenue-report', { startDate, endDate });
-      setRevenueData(res.data);
+      const formattedStartDate = `${startDate} 00:00:00`;
+      const formattedEndDate = `${endDate} 23:59:59`;
+
+      console.log('Generating report for period:', { formattedStartDate, formattedEndDate });
+
+      const response = await axios.get('http://localhost:5050/api/revenue-report', {
+        params: {
+          startDate: formattedStartDate,
+          endDate: formattedEndDate
+        },
+        paramsSerializer: params => {
+          return Object.entries(params)
+            .map(([key, value]) => `${key}=${encodeURIComponent(value)}`)
+            .join('&');
+        }
+      });
+
+      console.log('Revenue report response:', response.data);
+      setRevenueData(response.data);
     } catch (error) {
       console.error('Error generating report:', error);
+      const errorMessage = error.response?.data?.error || error.message;
+      alert('Error generating report: ' + errorMessage);
     }
   };
 
@@ -157,55 +194,83 @@ function DavidDashboard() {
     }
   };
 
-  const handleQuoteAction = async (request, action) => {
+  const handleQuoteAction = async (quote, action) => {
     try {
-      if (!request || !request.request_id) {
-        alert('Invalid request data');
+      if (action === 'revise') {
+        setReviseQuote(quote);
+        setReviseForm({
+          counter_price: quote.counter_price,
+          work_start: quote.work_start ? new Date(quote.work_start).toISOString().slice(0, 10) : '',
+          work_end: quote.work_end ? new Date(quote.work_end).toISOString().slice(0, 10) : '',
+          note: ''
+        });
+        setShowReviseModal(true);
+        return;
+      }
+      console.log('Request data:', quote);
+      console.log('Action:', action);
+
+      if (!quote) {
+        console.error('Request object is null or undefined');
+        alert('Invalid request data: Request object is missing');
         return;
       }
 
-      let response;
+      if (!quote.request_id) {
+        console.error('Request ID is missing:', quote);
+        alert('Invalid request data: Request ID is missing');
+        return;
+      }
+
       if (action === 'create') {
         const today = new Date();
         const tomorrow = new Date(today);
         tomorrow.setDate(tomorrow.getDate() + 1);
 
-        const formattedData = {
-          counter_price: parseFloat(request.proposed_price),
+        const quoteData = {
+          counter_price: quote.proposed_price ? parseFloat(quote.proposed_price) : 0,
           work_start: today.toISOString().slice(0, 19).replace('T', ' '),
           work_end: tomorrow.toISOString().slice(0, 19).replace('T', ' '),
           note: 'Quote created from request'
         };
 
-        console.log('Sending quote creation data:', formattedData);
+        console.log('Creating quote with data:', {
+          request_id: quote.request_id,
+          ...quoteData
+        });
 
-        response = await axios.post(
-          `http://localhost:5050/api/requests/${request.request_id}/quote`,
-          formattedData
+        const response = await axios.post(
+          `http://localhost:5050/api/requests/${quote.request_id}/quote`,
+          quoteData
         );
+
+        if (response.data.success) {
+          alert('Quote created successfully!');
+          fetchData(); // Refresh all data
+        } else {
+          alert('Failed to create quote: ' + (response.data.error || 'Unknown error'));
+        }
       } else if (action === 'reject') {
-        response = await axios.post(
-          `http://localhost:5050/api/requests/${request.request_id}/respond`,
+        console.log('Rejecting request:', quote.request_id);
+
+        const response = await axios.post(
+          `http://localhost:5050/api/requests/${quote.request_id}/respond`,
           {
             status: 'rejected',
             note: 'Request rejected by David Smith'
           }
         );
-      }
 
-      if (response?.data?.success) {
-        alert(`Request ${action === 'create' ? 'converted to quote' : 'rejected'} successfully!`);
-        fetchData(); // Refresh all data
-      } else {
-        alert(`Error: ${response?.data?.error || 'Unknown error occurred'}`);
+        if (response.data.success) {
+          alert('Request rejected successfully!');
+          fetchData(); // Refresh all data
+        } else {
+          alert('Failed to reject request: ' + (response.data.error || 'Unknown error'));
+        }
       }
     } catch (error) {
-      console.error(`Error ${action}ing request:`, error);
-      const errorMessage = error.response?.data?.details || 
-                          error.response?.data?.error || 
-                          error.message || 
-                          'Unknown error occurred';
-      alert(`Error ${action}ing request: ${errorMessage}`);
+      console.error(`Error ${action}ing quote:`, error);
+      alert(`Error ${action}ing quote: ${error.message}`);
     }
   };
 
@@ -875,6 +940,226 @@ function DavidDashboard() {
     )
   );
 
+  const handleReviseSubmit = async (e) => {
+    e.preventDefault();
+    try {
+      const response = await axios.post(
+        `http://localhost:5050/api/quotes/${reviseQuote.quote_id}/update`,
+        {
+          counter_price: parseFloat(reviseForm.counter_price),
+          work_start: `${reviseForm.work_start} 00:00:00`,
+          work_end: `${reviseForm.work_end} 23:59:59`,
+          note: reviseForm.note,
+          status: 'revised'
+        }
+      );
+
+      if (response.data.success) {
+        alert('Quote revised successfully!');
+        setShowReviseModal(false);
+        fetchQuotes(); // Refresh quotes list
+      } else {
+        alert('Failed to revise quote: ' + (response.data.error || 'Unknown error'));
+      }
+    } catch (error) {
+      console.error('Error revising quote:', error);
+      alert('Error revising quote: ' + (error.response?.data?.error || error.message));
+    }
+  };
+
+  const renderReviseModal = () => (
+    showReviseModal && (
+      <div className="modal show d-block" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
+        <div className="modal-dialog">
+          <div className="modal-content">
+            <div className="modal-header">
+              <h5 className="modal-title">Revise Quote</h5>
+              <button
+                type="button"
+                className="btn-close"
+                onClick={() => setShowReviseModal(false)}
+              />
+            </div>
+            <form onSubmit={handleReviseSubmit}>
+              <div className="modal-body">
+                <div className="mb-3">
+                  <label className="form-label">Counter Price ($)</label>
+                  <input
+                    type="number"
+                    className="form-control"
+                    value={reviseForm.counter_price}
+                    onChange={(e) => setReviseForm({
+                      ...reviseForm,
+                      counter_price: e.target.value
+                    })}
+                    required
+                  />
+                </div>
+                <div className="mb-3">
+                  <label className="form-label">Work Start Date</label>
+                  <input
+                    type="date"
+                    className="form-control"
+                    value={reviseForm.work_start}
+                    onChange={(e) => setReviseForm({
+                      ...reviseForm,
+                      work_start: e.target.value
+                    })}
+                    required
+                  />
+                </div>
+                <div className="mb-3">
+                  <label className="form-label">Work End Date</label>
+                  <input
+                    type="date"
+                    className="form-control"
+                    value={reviseForm.work_end}
+                    onChange={(e) => setReviseForm({
+                      ...reviseForm,
+                      work_end: e.target.value
+                    })}
+                    required
+                  />
+                </div>
+                <div className="mb-3">
+                  <label className="form-label">Revision Note</label>
+                  <textarea
+                    className="form-control"
+                    rows="3"
+                    value={reviseForm.note}
+                    onChange={(e) => setReviseForm({
+                      ...reviseForm,
+                      note: e.target.value
+                    })}
+                    required
+                    placeholder="Explain the changes in this revision"
+                  />
+                </div>
+              </div>
+              <div className="modal-footer">
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => setShowReviseModal(false)}
+                >
+                  Cancel
+                </button>
+                <button type="submit" className="btn btn-primary">
+                  Submit Revision
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+    )
+  );
+
+  const handleDisputeResponse = async (e) => {
+    e.preventDefault();
+    try {
+      console.log('Sending dispute response:', {
+        bill_id: selectedBill.bill_id,
+        new_amount: disputeResponse.new_amount,
+        response_note: disputeResponse.response_note
+      });
+
+      const response = await axios.post(
+        `http://localhost:5050/api/bills/${selectedBill.bill_id}/respond-dispute`,
+        {
+          new_amount: parseFloat(disputeResponse.new_amount),
+          response_note: disputeResponse.response_note
+        }
+      );
+
+      console.log('Response from server:', response.data);
+
+      if (response.data.success) {
+        alert('Dispute response submitted successfully!');
+        setShowDisputeResponseModal(false);
+        fetchBills(); // Refresh bills list
+      } else {
+        alert('Failed to submit dispute response: ' + (response.data.error || 'Unknown error'));
+      }
+    } catch (error) {
+      console.error('Error submitting dispute response:', error);
+      const errorMessage = error.response?.data?.error || error.message;
+      alert('Error submitting dispute response: ' + errorMessage);
+    }
+  };
+
+  const renderDisputeResponseModal = () => (
+    showDisputeResponseModal && (
+      <div className="modal show d-block" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
+        <div className="modal-dialog">
+          <div className="modal-content">
+            <div className="modal-header">
+              <h5 className="modal-title">Respond to Dispute</h5>
+              <button
+                type="button"
+                className="btn-close"
+                onClick={() => setShowDisputeResponseModal(false)}
+              />
+            </div>
+            <form onSubmit={handleDisputeResponse}>
+              <div className="modal-body">
+                <div className="mb-3">
+                  <label className="form-label">New Amount ($)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    className="form-control"
+                    value={disputeResponse.new_amount}
+                    onChange={(e) => setDisputeResponse({
+                      ...disputeResponse,
+                      new_amount: e.target.value
+                    })}
+                    required
+                  />
+                </div>
+                <div className="mb-3">
+                  <label className="form-label">Response Note</label>
+                  <textarea
+                    className="form-control"
+                    rows="4"
+                    value={disputeResponse.response_note}
+                    onChange={(e) => setDisputeResponse({
+                      ...disputeResponse,
+                      response_note: e.target.value
+                    })}
+                    required
+                    placeholder="Explain the reason for the price adjustment"
+                  />
+                </div>
+              </div>
+              <div className="modal-footer">
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => setShowDisputeResponseModal(false)}
+                >
+                  Cancel
+                </button>
+                <button type="submit" className="btn btn-primary">
+                  Submit Response
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+    )
+  );
+
+  const fetchBills = async () => {
+    try {
+      const response = await axios.get('http://localhost:5050/api/bills');
+      setBills(response.data);
+    } catch (error) {
+      console.error('Error fetching bills:', error);
+    }
+  };
+
   return (
     <div className="container mt-4">
       <div className="d-flex justify-content-between align-items-center mb-4">
@@ -972,34 +1257,45 @@ function DavidDashboard() {
               </thead>
               <tbody>
                 {quotes.map((quote) => (
-                  <tr key={`quote-${quote.quote_id}-${quote.created_at}`}>
+                  <tr key={quote.quote_id}>
                     <td>{quote.quote_id}</td>
                     <td>{quote.request_id}</td>
-                    <td>Client {quote.request_id}</td>
-                    <td>${quote.counter_price || 0}</td>
-                    <td>{quote.work_start ? new Date(quote.work_start).toLocaleString() : 'Not set'}</td>
-                    <td>{quote.work_end ? new Date(quote.work_end).toLocaleString() : 'Not set'}</td>
+                    <td>{quote.client_name || 'N/A'}</td>
+                    <td>${quote.counter_price}</td>
+                    <td>{new Date(quote.work_start).toLocaleDateString()}</td>
+                    <td>{new Date(quote.work_end).toLocaleDateString()}</td>
                     <td>
-                      <span className={`badge bg-${getStatusBadgeColor(quote.status || 'pending')}`}>
-                        {quote.status || 'pending'}
+                      <span className={`badge bg-${getStatusBadgeColor(quote.status)}`}>
+                        {quote.status}
                       </span>
                     </td>
                     <td>
-                      {quote.status === 'pending' && (
+                      {(quote.status === 'pending' || quote.status === 'negotiating') && (
                         <div className="btn-group">
                           <button
-                            className="btn btn-warning btn-sm"
-                            onClick={() => handleReviseQuote(quote)}
+                            className="btn btn-success btn-sm"
+                            onClick={() => handleQuoteAction(quote, 'accept')}
                           >
-                            Revise Quote
+                            Accept
+                          </button>
+                          <button
+                            className="btn btn-primary btn-sm ms-1"
+                            onClick={() => handleQuoteAction(quote, 'revise')}
+                          >
+                            Revise
                           </button>
                           <button
                             className="btn btn-danger btn-sm ms-1"
-                            onClick={() => handleQuitNegotiation(quote)}
+                            onClick={() => handleQuoteAction(quote, 'reject')}
                           >
-                            Quit
+                            Reject
                           </button>
                         </div>
+                      )}
+                      {quote.status !== 'pending' && quote.status !== 'negotiating' && (
+                        <span className="text-muted">
+                          {quote.status === 'accepted' ? 'Quote accepted' : 'No actions available'}
+                        </span>
                       )}
                     </td>
                   </tr>
@@ -1083,6 +1379,7 @@ function DavidDashboard() {
                   <th>Date</th>
                   <th>Amount Due</th>
                   <th>Status</th>
+                  <th>Note</th>
                   <th>Actions</th>
                 </tr>
               </thead>
@@ -1094,13 +1391,21 @@ function DavidDashboard() {
                     <td>{new Date(bill.created_at).toLocaleDateString()}</td>
                     <td>${bill.amount_due}</td>
                     <td>{bill.status}</td>
+                    <td>{bill.note || 'No note'}</td>
                     <td>
-                      {bill.status === 'pending' && (
+                      {bill.status === 'disputed' && (
                         <button
                           className="btn btn-primary btn-sm"
-                          onClick={() => handleBillAction(bill)}
+                          onClick={() => {
+                            setSelectedBill(bill);
+                            setDisputeResponse({
+                              new_amount: bill.amount_due,
+                              response_note: ''
+                            });
+                            setShowDisputeResponseModal(true);
+                          }}
                         >
-                          Process
+                          Respond to Dispute
                         </button>
                       )}
                     </td>
@@ -1115,48 +1420,99 @@ function DavidDashboard() {
       {activeTab === 'revenue' && (
         <div>
           <h3>Revenue Report</h3>
-          <form onSubmit={generateReport} className="mb-4">
-            <div className="row">
-              <div className="col-md-4">
-                <div className="form-group">
-                  <label>Start Date</label>
-                  <input
-                    type="date"
-                    className="form-control"
-                    value={startDate}
-                    onChange={(e) => setStartDate(e.target.value)}
-                    required
-                  />
-                </div>
+          <div className="row mb-4">
+            <div className="col-md-4">
+              <div className="mb-3">
+                <label className="form-label">Start Date</label>
+                <input
+                  type="date"
+                  className="form-control"
+                  value={startDate}
+                  onChange={(e) => setStartDate(e.target.value)}
+                />
               </div>
-              <div className="col-md-4">
-                <div className="form-group">
-                  <label>End Date</label>
-                  <input
-                    type="date"
-                    className="form-control"
-                    value={endDate}
-                    onChange={(e) => setEndDate(e.target.value)}
-                    required
-                  />
-                </div>
+            </div>
+            <div className="col-md-4">
+              <div className="mb-3">
+                <label className="form-label">End Date</label>
+                <input
+                  type="date"
+                  className="form-control"
+                  value={endDate}
+                  onChange={(e) => setEndDate(e.target.value)}
+                />
               </div>
-              <div className="col-md-4">
-                <button type="submit" className="btn btn-primary mt-4">
+            </div>
+            <div className="col-md-4">
+              <div className="mb-3">
+                <label className="form-label">&nbsp;</label>
+                <button 
+                  className="btn btn-primary d-block"
+                  onClick={handleGenerateReport}
+                >
                   Generate Report
                 </button>
               </div>
             </div>
-          </form>
+          </div>
 
           {revenueData && (
-            <div className="card">
-              <div className="card-body">
-                <h5 className="card-title">Summary</h5>
-                <p>Total Revenue: ${revenueData.totalRevenue}</p>
-                <p>Number of Orders: {revenueData.totalOrders}</p>
-                <p>Average Order Value: ${revenueData.averageOrderValue}</p>
+            <div>
+              <h4>Summary</h4>
+              <div className="row mb-4">
+                <div className="col-md-4">
+                  <div className="card">
+                    <div className="card-body">
+                      <h5 className="card-title">Total Revenue</h5>
+                      <p className="card-text">${revenueData.totals.total_revenue.toFixed(2)}</p>
+                    </div>
+                  </div>
+                </div>
+                <div className="col-md-4">
+                  <div className="card">
+                    <div className="card-body">
+                      <h5 className="card-title">Collected Revenue</h5>
+                      <p className="card-text">${revenueData.totals.collected_revenue.toFixed(2)}</p>
+                    </div>
+                  </div>
+                </div>
+                <div className="col-md-4">
+                  <div className="card">
+                    <div className="card-body">
+                      <h5 className="card-title">Pending Revenue</h5>
+                      <p className="card-text">${revenueData.totals.pending_revenue.toFixed(2)}</p>
+                    </div>
+                  </div>
+                </div>
               </div>
+
+              <h4>Daily Breakdown</h4>
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>Total Bills</th>
+                    <th>Total Revenue</th>
+                    <th>Paid Bills</th>
+                    <th>Collected Revenue</th>
+                    <th>Pending Bills</th>
+                    <th>Pending Revenue</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {revenueData.daily_data.map((day, index) => (
+                    <tr key={index}>
+                      <td>{new Date(day.date).toLocaleDateString()}</td>
+                      <td>{day.total_bills}</td>
+                      <td>${day.total_revenue.toFixed(2)}</td>
+                      <td>{day.paid_bills}</td>
+                      <td>${day.collected_revenue.toFixed(2)}</td>
+                      <td>{day.pending_bills}</td>
+                      <td>${day.pending_revenue.toFixed(2)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           )}
         </div>
@@ -1396,6 +1752,8 @@ function DavidDashboard() {
       {renderOverdueBillsModal()}
       {renderBadClientsModal()}
       {renderGoodClientsModal()}
+      {renderReviseModal()}
+      {renderDisputeResponseModal()}
     </div>
   );
 }
