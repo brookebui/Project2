@@ -503,17 +503,21 @@ function DavidDashboard() {
     }
   };
 
-  const fetchBigClients = async () => {
-    try {
-      const response = await axios.get('http://localhost:5050/api/clients/top');
-      console.log('Big clients response:', response.data);
-      setBigClients(response.data);
-      setShowBigClients(true);
-    } catch (error) {
-      console.error('Error fetching big clients:', error);
-      alert('Error fetching big clients: ' + (error.response?.data?.error || error.message));
+// Function to fetch top clients
+const fetchBigClients = async () => {
+  try {
+    const response = await fetch('http://localhost:5050/api/clients/top'); // Adjust the API endpoint as needed
+    if (!response.ok) {
+      throw new Error('Failed to fetch top clients');
     }
-  };
+    const data = await response.json();
+    setBigClients(data);
+    setShowBigClients(true); // Show the modal after fetching data
+  } catch (error) {
+    console.error('Error fetching top clients:', error);
+    setBigClients([]); // Handle errors gracefully
+  }
+};
 
   const fetchDifficultClients = async () => {
     try {
@@ -606,21 +610,24 @@ function DavidDashboard() {
               />
             </div>
             <div className="modal-body">
-              {bigClients.length > 0 ? (
-                <div>
-                  <h6>Clients with Most Completed Orders:</h6>
-                  <ul className="list-group">
-                    {bigClients.map((client, index) => (
-                      <li key={index} className="list-group-item">
-                        {client.first_name} {client.last_name} - {client.completed_orders} orders
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              ) : (
-                <p>No completed orders found.</p>
-              )}
-            </div>
+            {bigClients.length > 0 ? (
+              <div>
+                <h6>Clients with Most Completed Orders:</h6>
+                <ul className="list-group">
+                  {/* Check if there is a tie */}
+                  {bigClients.map((client, index) => (
+                    <li key={index} className="list-group-item">
+                      {client.first_name} {client.last_name} - {client.total_orders} orders
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : (
+              <p>No completed orders found.</p>
+            )}
+          </div>
+
+
             <div className="modal-footer">
               <button
                 type="button"
@@ -784,7 +791,7 @@ function DavidDashboard() {
                   <ul className="list-group">
                     {largestDriveways.map((driveway, index) => (
                       <li key={index} className="list-group-item">
-                        {driveway.first_name} {driveway.last_name} - {driveway.square_feet} square feet
+                        {driveway.property_address} - {driveway.square_feet} square feet
                       </li>
                     ))}
                   </ul>
