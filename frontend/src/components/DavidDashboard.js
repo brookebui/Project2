@@ -1280,12 +1280,6 @@ const fetchBigClients = async () => {
                       {(quote.status === 'pending' || quote.status === 'negotiating') && (
                         <div className="btn-group">
                           <button
-                            className="btn btn-success btn-sm"
-                            onClick={() => handleQuoteAction(quote, 'accept')}
-                          >
-                            Accept
-                          </button>
-                          <button
                             className="btn btn-primary btn-sm ms-1"
                             onClick={() => handleQuoteAction(quote, 'revise')}
                           >
@@ -1386,7 +1380,6 @@ const fetchBigClients = async () => {
                   <th>Date</th>
                   <th>Amount Due</th>
                   <th>Status</th>
-                  <th>Note</th>
                   <th>Actions</th>
                 </tr>
               </thead>
@@ -1398,7 +1391,6 @@ const fetchBigClients = async () => {
                     <td>{new Date(bill.created_at).toLocaleDateString()}</td>
                     <td>${bill.amount_due}</td>
                     <td>{bill.status}</td>
-                    <td>{bill.note || 'No note'}</td>
                     <td>
                       {bill.status === 'disputed' && (
                         <button
